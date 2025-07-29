@@ -1,0 +1,119 @@
+# LinkedIn Lead Enrichment Chrome Extension v1.0.0
+
+## 🚀 Initial Release
+
+A powerful Chrome extension that enriches your CSV leads with personalized AI-generated pitches using LinkedIn profile data.
+
+## ✨ Key Features
+
+### 🤖 AI-Powered Pitch Generation
+- **Dual AI Support**: Works with both Google Gemini and OpenAI APIs
+- **Personalized Messages**: Generates 3 unique, personalized LinkedIn outreach messages per lead
+- **Smart Persona Analysis**: Creates comprehensive personas from LinkedIn profile data
+- **Problem-Solution Matching**: Identifies specific business problems and tailors pitches accordingly
+
+### 📊 CSV Processing
+- **Easy Import**: Drag-and-drop CSV file upload
+- **Smart Column Detection**: Automatically detects name, LinkedIn, and company columns
+- **Flexible Mapping**: Manual column mapping for custom CSV formats
+- **Export Results**: Download enriched data with generated pitches
+
+### 🔍 LinkedIn Integration
+- **Profile Scraping**: Extracts comprehensive profile data from LinkedIn
+- **Session Management**: Automatic LinkedIn session detection and validation
+- **Smart Navigation**: Handles different LinkedIn URL formats
+- **Rate Limiting**: Built-in delays to respect LinkedIn's usage policies
+
+### 🎯 User Experience
+- **Progress Tracking**: Real-time processing status with estimated completion times
+- **Error Handling**: Graceful error recovery and detailed error reporting
+- **Responsive Design**: Clean, modern interface that works seamlessly
+- **Settings Management**: Secure API key storage and configuration
+
+## 🛠️ Technical Specifications
+
+- **Manifest Version**: 3 (Latest Chrome Extension standard)
+- **Permissions**: Minimal required permissions for LinkedIn access
+- **APIs Supported**: 
+  - Google Gemini 2.5 Flash
+  - OpenAI GPT-4.1
+- **File Formats**: CSV import/export
+- **Browser Support**: Chrome (Manifest V3 compatible)
+
+## 📋 Installation Instructions
+
+### For Chrome Web Store (Recommended)
+1. Visit the Chrome Web Store listing (coming soon)
+2. Click "Add to Chrome"
+3. Configure your API keys in the extension settings
+
+### For Manual Installation (Developer Mode)
+1. Download the `linkedin-lead-enrichment-v1.0.0.zip` file
+2. Extract the contents to a folder
+3. Open Chrome and go to `chrome://extensions/`
+4. Enable "Developer mode" in the top right
+5. Click "Load unpacked" and select the extracted folder
+6. Configure your API keys in the extension settings
+
+## ⚙️ Setup Requirements
+
+### API Keys Required
+You need at least one of the following API keys:
+
+**Google Gemini API** (Recommended)
+- Get your free API key at [Google AI Studio](https://aistudio.google.com/)
+- More cost-effective for high-volume usage
+
+**OpenAI API** (Fallback)
+- Get your API key at [OpenAI Platform](https://platform.openai.com/)
+- Used as fallback if Gemini fails
+
+### LinkedIn Account
+- Active LinkedIn account required
+- Must be logged in to LinkedIn when using the extension
+
+## 🚦 Usage Guide
+
+1. **Setup**: Install the extension and configure your API keys
+2. **LinkedIn Session**: Ensure you're logged into LinkedIn
+3. **CSV Upload**: Upload your CSV file with lead information
+4. **Column Mapping**: Map your CSV columns (name, LinkedIn profile, company)
+5. **Configuration**: Set your service type and industry focus
+6. **Processing**: Start the enrichment process
+7. **Results**: Download the enriched CSV with AI-generated pitches
+
+## 🔒 Privacy & Security
+
+- **Local Storage**: API keys stored securely in Chrome's local storage
+- **No Data Collection**: No user data is collected or transmitted to third parties
+- **LinkedIn Compliance**: Respects LinkedIn's terms of service and rate limits
+- **Secure API Calls**: All API communications use HTTPS encryption
+
+## 🐛 Known Issues & Limitations
+
+- Processing time varies based on CSV size (1-1.5 minutes per lead)
+- LinkedIn session must remain active during processing
+- Some LinkedIn profiles may have limited public information
+- Rate limiting may cause delays for large datasets
+
+## 🔄 Future Enhancements
+
+- Bulk processing optimization
+- Additional AI model support
+- Enhanced profile data extraction
+- Custom pitch templates
+- Integration with CRM systems
+
+## 📞 Support
+
+For issues, feature requests, or questions:
+- GitHub Issues: [Create an issue](https://github.com/emmanuelallan/linkedin-lead-enrichment-chrome/issues)
+- Email: [Your support email]
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+**Ready for Chrome Web Store submission** ✅
