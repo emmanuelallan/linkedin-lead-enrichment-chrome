@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "LinkedIn Lead Enrichment",
+  "version": "1.0.0",
+  "description": "Enrich your CSV leads with personalized AI-generated pitches using LinkedIn data",
+  
+  "permissions": [
+    "activeTab",
+    "sidePanel",
+    "storage",
+    "scripting"
+  ],
+  
+  "host_permissions": [
+    "https://*.linkedin.com/*"
+  ],
+  
+  "background": {
+    "service_worker": "background.js"
+  },
+  
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["https://*.linkedin.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  
+  "action": {
+    "default_title": "Open Lead Enrichment Panel"
+  },
+  
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["sidepanel.html"],
+      "matches": ["https://*.linkedin.com/*"]
+    }
+  ]
+}

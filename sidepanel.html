@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>LinkedIn Lead Enrichment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container {
+            padding: 1rem;
+            height: calc(100vh - 80px);
+            overflow-y: auto;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .step {
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .step.active {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .step.completed {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .step-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .step-number {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            background: #e1e5e9;
+            color: #6b7280;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .step.active .step-number {
+            background: #667eea;
+            color: white;
+        }
+
+        .step.completed .step-number {
+            background: #10b981;
+            color: white;
+        }
+
+        .step-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .drop-zone {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 1rem 0;
+            background: #f9fafb;
+        }
+
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .drop-zone.has-file {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .drop-zone input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            margin: 0.25rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+        }
+
+        .btn-small {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .form-group select,
+        .form-group input {
+            width: 100%;
+            padding: 0.6rem;
+            border: 1px solid #d1d5db;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        .csv-preview {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+            max-height: 150px;
+            overflow: auto;
+            font-size: 0.8rem;
+        }
+
+        .csv-preview table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .csv-preview th,
+        .csv-preview td {
+            padding: 0.4rem;
+            border: 1px solid #e5e7eb;
+            text-align: left;
+        }
+
+        .csv-preview th {
+            background: #f3f4f6;
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            margin: 0.5rem 0;
+        }
+
+        .status-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: #059669;
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #dc2626;
+        }
+
+        .status-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: #d97706;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-top: 0.2rem;
+        }
+
+        .settings-toggle {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(107, 114, 128, 0.1);
+            border: none;
+            border-radius: 50%;
+            width: 2rem;
+            height: 2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .settings-toggle:hover {
+            background: rgba(107, 114, 128, 0.2);
+        }
+
+        .settings-panel {
+            display: none;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            border: 1px solid #e5e7eb;
+        }
+
+        .settings-panel.show {
+            display: block;
+        }
+
+        .settings-panel h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 1rem;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            margin: 1rem 0;
+        }
+
+        .results-table th,
+        .results-table td {
+            padding: 0.5rem;
+            border: 1px solid #e5e7eb;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .results-table th {
+            background: #f3f4f6;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+
+        .results-table td {
+            max-width: 200px;
+            word-wrap: break-word;
+        }
+
+        .pitch-cell {
+            font-size: 0.75rem;
+            line-height: 1.3;
+        }
+
+        .loading-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #e5e7eb;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 LinkedIn Lead Enrichment</h1>
+        <button class="settings-toggle">⚙️</button>
+    </div>
+
+    <div class="container">
+        <!-- Settings Panel -->
+        <div id="settingsPanel" class="settings-panel">
+            <h3>🤖 AI API Configuration</h3>
+            <div class="form-group">
+                <label for="geminiApiKey">Gemini API Key</label>
+                <input type="password" id="geminiApiKey" placeholder="Enter your Gemini API key">
+            </div>
+            <div class="form-group">
+                <label for="openaiApiKey">OpenAI API Key (Backup)</label>
+                <input type="password" id="openaiApiKey" placeholder="Enter your OpenAI API key">
+            </div>
+            <button class="btn btn-small" id="saveSettingsBtn">Save Settings</button>
+            <button class="btn btn-secondary btn-small" id="closeSettingsBtn">Close</button>
+        </div>
+
+        <div class="card">
+            <!-- Step 1: LinkedIn Session Check -->
+            <div class="step" id="step1">
+                <div class="step-header">
+                    <div class="step-number">1</div>
+                    <div class="step-title">LinkedIn Session</div>
+                </div>
+                <div id="sessionStatus" class="status-indicator status-warning">
+                    ⏳ Checking LinkedIn session...
+                </div>
+                <button class="btn btn-small" id="checkSessionBtn">
+                    🔄 Refresh Session
+                </button>
+            </div>
+
+            <!-- Step 2: Upload CSV -->
+            <div class="step" id="step2">
+                <div class="step-header">
+                    <div class="step-number">2</div>
+                    <div class="step-title">Upload CSV File</div>
+                </div>
+                <div class="drop-zone" id="dropZone">
+                    <input type="file" id="fileInput" accept=".csv">
+                    <div id="dropZoneContent">
+                        📁 Drop CSV file here or click to select
+                        <br><small>Supported format: .csv files</small>
+                    </div>
+                </div>
+                <div id="csvPreview" class="csv-preview hidden"></div>
+            </div>
+
+            <!-- Step 3: Configure Columns -->
+            <div class="step" id="step3">
+                <div class="step-header">
+                    <div class="step-number">3</div>
+                    <div class="step-title">Configure Columns</div>
+                </div>
+                <div id="columnMapping" class="hidden">
+                    <div class="form-group">
+                        <label for="nameColumn">Name Column *</label>
+                        <select id="nameColumn" required>
+                            <option value="">Select column containing contact names</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="linkedinColumn">LinkedIn Profile Column *</label>
+                        <select id="linkedinColumn" required>
+                            <option value="">Select column with LinkedIn URLs</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="companyColumn">Company Column (Optional)</label>
+                        <select id="companyColumn">
+                            <option value="">Select company column (optional)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="serviceType">Your Service Type *</label>
+                        <input type="text" id="serviceType" placeholder="e.g., cold email, lead generation, sales automation" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="industryFocus">Target Industry *</label>
+                        <input type="text" id="industryFocus" placeholder="e.g., SaaS, e-commerce, real estate" required>
+                    </div>
+                    <button class="btn" id="validateConfigBtn">✓ Validate Configuration</button>
+                </div>
+            </div>
+
+            <!-- Step 4: Process Leads -->
+            <div class="step" id="step4">
+                <div class="step-header">
+                    <div class="step-number">4</div>
+                    <div class="step-title">Process Leads</div>
+                </div>
+                <div id="processingControls">
+                    <button class="btn" id="startProcessingBtn" disabled>
+                        🚀 Start Lead Enrichment
+                    </button>
+                </div>
+                
+                <div id="progressSection" class="hidden">
+                    <div id="currentStatus">Ready to start...</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-stats">
+                        <div class="stat">
+                            <div class="stat-value" id="processedCount">0</div>
+                            <div class="stat-label">Processed</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="totalCount">0</div>
+                            <div class="stat-label">Total</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="progressPercentage">0%</div>
+                            <div class="stat-label">Progress</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="estimatedTime">--</div>
+                            <div class="stat-label">Est. Time</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="completionSection" class="hidden">
+                    <div class="status-indicator status-success">
+                        ✅ Enrichment completed successfully!
+                    </div>
+                    <button class="btn" id="downloadResultsBtn">
+                        💾 Download Enriched CSV
+                    </button>
+                    <button class="btn btn-secondary" id="previewResultsBtn">
+                        👁️ Preview Results
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Preview -->
+            <div id="resultsSection" class="hidden">
+                <h3>📊 Results Preview</h3>
+                <div id="resultsContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="sidepanel.js"></script>
+</body>
+</html>
