@@ -480,13 +480,12 @@ async function handleProfileScraping(message, sender, sendResponse) {
 
 async function handleAIPitchGeneration(message, sender, sendResponse) {
   try {
-    const { personName, profileData, serviceType, industryFocus } = message;
+    const { personName, profileData, serviceType, industryFocus, customPrompt } = message;
 
-    // Get API keys and custom settings from storage
+    // Get API keys from storage
     const settings = await chrome.storage.local.get([
       'geminiApiKey', 
-      'openaiApiKey', 
-      'customPrompt'
+      'openaiApiKey'
     ]);
 
     if (!settings.geminiApiKey && !settings.openaiApiKey) {
@@ -495,6 +494,11 @@ async function handleAIPitchGeneration(message, sender, sendResponse) {
         message: 'No AI API keys configured. Please set them in settings.'
       });
       return;
+    }
+
+    // Add custom prompt to settings if provided
+    if (customPrompt) {
+      settings.customPrompt = customPrompt;
     }
 
     // Generate pitches using AI
@@ -903,12 +907,19 @@ function validateAndCleanProfileUrl(input) {
 
   const trimmed = input.trim();
 
-  // Handle LinkedIn Sales Navigator URLs - extract profile from them
-  if (trimmed.includes('linkedin.com/sales/') && trimmed.includes('people/')) {
+  // Handle LinkedIn Sales Navigator URLs - support them now
+  if (trimmed.includes('linkedin.com/sales/') || trimmed.includes('sales.linkedin.com/')) {
+    // Clean and validate Sales Navigator URL
+    let cleanUrl = trimmed;
+    if (!cleanUrl.startsWith('https://')) {
+      cleanUrl = cleanUrl.startsWith('http://') ? cleanUrl.replace('http://', 'https://') : `https://${cleanUrl}`;
+    }
+    
     return {
-      isValid: false,
-      error: 'Sales Navigator URLs are not supported. Please provide direct LinkedIn profile URLs (linkedin.com/in/username) or just the username.',
-      type: 'sales_navigator'
+      isValid: true,
+      url: cleanUrl,
+      type: 'sales_navigator',
+      isSalesNavigator: true
     };
   }
 

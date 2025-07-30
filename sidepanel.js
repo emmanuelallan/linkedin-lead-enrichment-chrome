@@ -33,6 +33,12 @@ function setupEventListeners() {
 
     // Configuration validation
     document.getElementById('validateConfigBtn').addEventListener('click', validateConfiguration);
+    
+    // Sales Navigator toggle
+    document.getElementById('enableSalesNavigator').addEventListener('change', toggleSalesNavigator);
+    
+    // Pitch configuration validation
+    document.getElementById('validatePitchConfigBtn').addEventListener('click', validatePitchConfiguration);
 
     // Processing
     document.getElementById('startProcessingBtn').addEventListener('click', startProcessing);
@@ -56,7 +62,6 @@ async function loadSettings() {
         const settings = await chrome.storage.local.get([
             'geminiApiKey', 
             'openaiApiKey', 
-            'customPrompt', 
             'delaySpeed', 
             'customDelay', 
             'scrollSpeed'
@@ -67,9 +72,6 @@ async function loadSettings() {
         }
         if (settings.openaiApiKey) {
             document.getElementById('openaiApiKey').value = settings.openaiApiKey;
-        }
-        if (settings.customPrompt) {
-            document.getElementById('customPrompt').value = settings.customPrompt;
         }
         if (settings.delaySpeed) {
             document.getElementById('delaySpeed').value = settings.delaySpeed;
@@ -93,7 +95,6 @@ async function saveSettings() {
         const settings = {
             geminiApiKey: document.getElementById('geminiApiKey').value.trim(),
             openaiApiKey: document.getElementById('openaiApiKey').value.trim(),
-            customPrompt: document.getElementById('customPrompt').value.trim(),
             delaySpeed: document.getElementById('delaySpeed').value,
             customDelay: document.getElementById('customDelay').value,
             scrollSpeed: document.getElementById('scrollSpeed').value
@@ -304,10 +305,12 @@ function showCSVPreview() {
 }
 
 function populateColumnSelectors() {
-    const selectors = ['nameColumn', 'linkedinColumn', 'companyColumn'];
+    const selectors = ['nameColumn', 'linkedinColumn', 'companyColumn', 'salesNavigatorColumn'];
 
     selectors.forEach(selectorId => {
         const select = document.getElementById(selectorId);
+        if (!select) return; // Skip if element doesn't exist
+        
         const firstOption = select.options[0];
         select.innerHTML = '';
         select.appendChild(firstOption);
@@ -322,10 +325,6 @@ function populateColumnSelectors() {
         // Auto-suggest based on column names
         autoSuggestColumn(select, selectorId);
     });
-
-    // Set default values
-    document.getElementById('serviceType').value = 'cold email lead generation';
-    document.getElementById('industryFocus').value = 'SaaS';
 
     document.getElementById('columnMapping').classList.remove('hidden');
 }
@@ -343,6 +342,10 @@ function autoSuggestColumn(select, selectorId) {
         companyColumn: [
             'company', 'organization', 'company_name', 'companyname',
             'org', 'employer', 'business', 'firm'
+        ],
+        salesNavigatorColumn: [
+            'sales_navigator', 'salesnavigator', 'sales_nav', 'salesnav',
+            'navigator_url', 'sales_linkedin', 'sn_url', 'sales_profile'
         ]
     };
 
@@ -386,7 +389,7 @@ function autoSuggestColumn(select, selectorId) {
 }
 
 function validateConfiguration() {
-    const required = ['nameColumn', 'linkedinColumn', 'serviceType', 'industryFocus'];
+    const required = ['nameColumn', 'linkedinColumn'];
     let isValid = true;
 
     required.forEach(fieldId => {
@@ -402,8 +405,47 @@ function validateConfiguration() {
     if (isValid) {
         updateStepStatus(3, 'completed');
         updateStepStatus(4, 'active');
+        document.getElementById('pitchCustomization').classList.remove('hidden');
+        showStatus('Column configuration validated successfully', 'success');
+    } else {
+        showStatus('Please fill in all required fields', 'error');
+    }
+}
+
+// Sales Navigator toggle function
+function toggleSalesNavigator() {
+    const checkbox = document.getElementById('enableSalesNavigator');
+    const options = document.getElementById('salesNavigatorOptions');
+    
+    if (checkbox.checked) {
+        options.classList.remove('hidden');
+    } else {
+        options.classList.add('hidden');
+        // Clear the sales navigator column selection
+        document.getElementById('salesNavigatorColumn').value = '';
+    }
+}
+
+// Pitch configuration validation
+function validatePitchConfiguration() {
+    const required = ['serviceType', 'industryFocus'];
+    let isValid = true;
+
+    required.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (!field.value.trim()) {
+            field.style.borderColor = '#dc2626';
+            isValid = false;
+        } else {
+            field.style.borderColor = '#10b981';
+        }
+    });
+
+    if (isValid) {
+        updateStepStatus(4, 'completed');
+        updateStepStatus(5, 'active');
         document.getElementById('startProcessingBtn').disabled = false;
-        showStatus('Configuration validated successfully', 'success');
+        showStatus('Pitch configuration validated successfully', 'success');
     } else {
         showStatus('Please fill in all required fields', 'error');
     }
@@ -422,8 +464,11 @@ async function startProcessing() {
             nameColumn: document.getElementById('nameColumn').value,
             linkedinColumn: document.getElementById('linkedinColumn').value,
             companyColumn: document.getElementById('companyColumn').value,
+            salesNavigatorColumn: document.getElementById('salesNavigatorColumn').value,
+            enableSalesNavigator: document.getElementById('enableSalesNavigator').checked,
             serviceType: document.getElementById('serviceType').value.trim(),
-            industryFocus: document.getElementById('industryFocus').value.trim()
+            industryFocus: document.getElementById('industryFocus').value.trim(),
+            customPrompt: document.getElementById('customPrompt').value.trim()
         };
 
         enrichedResults = [];
@@ -435,7 +480,14 @@ async function startProcessing() {
         for (let i = 0; i < currentCSVData.length; i++) {
             const lead = currentCSVData[i];
             const leadName = lead[config.nameColumn] || `Lead ${i + 1}`;
-            const profileUrl = lead[config.linkedinColumn];
+            
+            // Determine which profile URL to use
+            let profileUrl = lead[config.linkedinColumn];
+            
+            // If Sales Navigator is enabled and we have a Sales Navigator column, prefer that
+            if (config.enableSalesNavigator && config.salesNavigatorColumn && lead[config.salesNavigatorColumn]) {
+                profileUrl = lead[config.salesNavigatorColumn];
+            }
 
             updateProgress(i + 1, currentCSVData.length, `Processing ${leadName}...`);
 
@@ -453,7 +505,7 @@ async function startProcessing() {
 
                 // Generate AI pitches
                 updateProgress(i + 1, currentCSVData.length, `Generating AI pitches for ${leadName}...`);
-                const pitches = await generatePitches(leadName, profileData, config.serviceType, config.industryFocus);
+                const pitches = await generatePitches(leadName, profileData, config.serviceType, config.industryFocus, config.customPrompt);
 
                 // Store results
                 const enrichedLead = {
@@ -487,7 +539,7 @@ async function startProcessing() {
         }
 
         // Processing complete
-        updateStepStatus(4, 'completed');
+        updateStepStatus(5, 'completed');
         document.getElementById('completionSection').classList.remove('hidden');
         showStatus('Lead enrichment completed successfully!', 'success');
 
@@ -514,14 +566,15 @@ async function scrapeProfile(profileUrl) {
     });
 }
 
-async function generatePitches(personName, profileData, serviceType, industryFocus) {
+async function generatePitches(personName, profileData, serviceType, industryFocus, customPrompt) {
     return new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
             type: 'GENERATE_AI_PITCHES',
             personName: personName,
             profileData: profileData,
             serviceType: serviceType,
-            industryFocus: industryFocus
+            industryFocus: industryFocus,
+            customPrompt: customPrompt
         }, (response) => {
             if (response.success) {
                 resolve(response.pitches);

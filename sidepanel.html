@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <title>LinkedIn Lead Enrichment</title>
@@ -115,7 +116,8 @@
             background: #f9fafb;
         }
 
-        .drop-zone:hover, .drop-zone.drag-over {
+        .drop-zone:hover,
+        .drop-zone.drag-over {
             border-color: #667eea;
             background: rgba(102, 126, 234, 0.05);
         }
@@ -392,10 +394,13 @@
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="header">
         <h1>🚀 LinkedIn Lead Enrichment</h1>
@@ -415,26 +420,7 @@
                 <input type="password" id="openaiApiKey" placeholder="Enter your OpenAI API key">
             </div>
 
-            <h3>✏️ Pitch Customization</h3>
-            <div class="form-group">
-                <label for="customPrompt">Custom Pitch Prompt Template</label>
-                <textarea id="customPrompt" rows="8" placeholder="Example:
-Create 3 personalized LinkedIn messages for {personName} promoting {serviceType}.
 
-Based on their profile: {profileData}
-
-Requirements:
-- Keep messages under 300 characters
-- Mention their industry ({industryFocus})
-- Include a clear value proposition
-- End with a question to encourage response
-
-Format as:
-Message 1: [Your first pitch]
-Message 2: [Your second pitch] 
-Message 3: [Your third pitch]"></textarea>
-                <small>Available placeholders: {personName}, {profileData}, {serviceType}, {industryFocus}, {persona}, {problems}. Leave empty for default prompt.</small>
-            </div>
 
             <h3>⚙️ Processing Settings</h3>
             <div class="form-group">
@@ -445,7 +431,8 @@ Message 3: [Your third pitch]"></textarea>
                     <option value="slow">Slow (2-3 minutes)</option>
                     <option value="custom">Custom</option>
                 </select>
-                <input type="number" id="customDelay" min="10" max="300" value="90" placeholder="Seconds" style="display:none; margin-top: 8px;">
+                <input type="number" id="customDelay" min="10" max="300" value="90" placeholder="Seconds"
+                    style="display:none; margin-top: 8px;">
                 <small>Delay between profile requests to avoid rate limiting</small>
             </div>
 
@@ -510,7 +497,7 @@ Message 3: [Your third pitch]"></textarea>
                     <div class="form-group">
                         <label for="linkedinColumn">LinkedIn Profile Column *</label>
                         <select id="linkedinColumn" required>
-                            <option value="">Select column with LinkedIn URLs</option>
+                            <option value="">Select column with LinkedIn profile URLs</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -520,21 +507,72 @@ Message 3: [Your third pitch]"></textarea>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="serviceType">Your Service Type *</label>
-                        <input type="text" id="serviceType" placeholder="e.g., cold email, lead generation, sales automation" required>
+                        <label>
+                            <input type="checkbox" id="enableSalesNavigator" style="margin-right: 8px;">
+                            Enable Sales Navigator Support
+                        </label>
+                        <small>Check this if your LinkedIn URLs include Sales Navigator links</small>
                     </div>
-                    <div class="form-group">
-                        <label for="industryFocus">Target Industry *</label>
-                        <input type="text" id="industryFocus" placeholder="e.g., SaaS, e-commerce, real estate" required>
+                    <div id="salesNavigatorOptions" class="hidden" style="margin-left: 20px; padding: 10px; background: #f9fafb; border-radius: 6px;">
+                        <div class="form-group">
+                            <label for="salesNavigatorColumn">Sales Navigator URL Column (Optional)</label>
+                            <select id="salesNavigatorColumn">
+                                <option value="">Select Sales Navigator URL column (optional)</option>
+                            </select>
+                            <small>If you have separate columns for regular LinkedIn and Sales Navigator URLs</small>
+                        </div>
                     </div>
                     <button class="btn" id="validateConfigBtn">✓ Validate Configuration</button>
                 </div>
             </div>
 
-            <!-- Step 4: Process Leads -->
+            <!-- Step 4: Customize Pitch Generation -->
             <div class="step" id="step4">
                 <div class="step-header">
                     <div class="step-number">4</div>
+                    <div class="step-title">Customize Pitch Generation</div>
+                </div>
+                <div id="pitchCustomization" class="hidden">
+                    <div class="form-group">
+                        <label for="serviceType">Your Service Type *</label>
+                        <input type="text" id="serviceType"
+                            placeholder="e.g., cold email, lead generation, sales automation" required>
+                        <small>What service or product are you offering?</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="industryFocus">Target Industry *</label>
+                        <input type="text" id="industryFocus" placeholder="e.g., SaaS, e-commerce, real estate"
+                            required>
+                        <small>What industry are you targeting?</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="customPrompt">Custom Pitch Prompt Template (Optional)</label>
+                        <textarea id="customPrompt" rows="6" placeholder="Leave empty for default prompt, or customize:
+
+Create 3 personalized LinkedIn messages for {personName} promoting {serviceType}.
+
+Based on their profile: {profileData}
+
+Requirements:
+- Keep messages under 300 characters
+- Mention their industry ({industryFocus})
+- Include a clear value proposition
+- End with a question to encourage response
+
+Format as:
+Message 1: [Your first pitch]
+Message 2: [Your second pitch] 
+Message 3: [Your third pitch]"></textarea>
+                        <small>Available placeholders: {personName}, {profileData}, {serviceType}, {industryFocus}, {persona}, {problems}. Leave empty for default prompt.</small>
+                    </div>
+                    <button class="btn" id="validatePitchConfigBtn">✓ Validate Pitch Configuration</button>
+                </div>
+            </div>
+
+            <!-- Step 5: Process Leads -->
+            <div class="step" id="step5">
+                <div class="step-header">
+                    <div class="step-number">5</div>
                     <div class="step-title">Process Leads</div>
                 </div>
                 <div id="processingControls">
@@ -542,7 +580,7 @@ Message 3: [Your third pitch]"></textarea>
                         🚀 Start Lead Enrichment
                     </button>
                 </div>
-                
+
                 <div id="progressSection" class="hidden">
                     <div id="currentStatus">Ready to start...</div>
                     <div class="progress-bar">
@@ -591,4 +629,5 @@ Message 3: [Your third pitch]"></textarea>
 
     <script src="sidepanel.js"></script>
 </body>
+
 </html>
