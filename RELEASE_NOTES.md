@@ -1,6 +1,36 @@
-# LinkedIn Lead Enrichment Chrome Extension v1.0.0
+# LinkedIn Lead Enrichment Chrome Extension
 
-## 🚀 Initial Release
+## 🚀 v1.1.0 - Custom Prompt Templates and Processing Speed Controls
+
+### ✨ New Features
+
+#### 🎯 Custom Prompt Templates
+- **Personalized Prompts**: Create your own pitch generation templates
+- **Flexible Placeholders**: Use `{personName}`, `{profileData}`, `{serviceType}`, `{industryFocus}`, `{persona}`, `{problems}`
+- **Example Template**: Comprehensive example provided in the UI
+- **Smart Fallback**: Automatically uses default prompt if custom prompt is empty
+
+#### ⚙️ Processing Speed Controls
+- **Configurable Delays**: Choose from Fast (30-60s), Medium (1-1.5m), Slow (2-3m), or Custom
+- **Custom Timing**: Set precise delays between 10-300 seconds
+- **Scroll Speed Control**: Adjust profile loading speed (Fast/Medium/Slow)
+- **Better Rate Limiting**: Improved LinkedIn compliance and reduced blocking risk
+
+#### 🎨 Enhanced User Interface
+- **Organized Settings**: Cleaner layout with grouped sections
+- **Dynamic Controls**: Custom delay input shows/hides based on selection
+- **Better Guidance**: Improved tooltips and examples throughout
+- **Form Validation**: Real-time validation for custom settings
+
+### 🔧 Technical Improvements
+- Enhanced settings persistence for all new options
+- Improved error handling and validation
+- Better code organization and maintainability
+- Optimized profile scraping with configurable timing
+
+---
+
+## 🚀 v1.0.0 - Initial Release
 
 A powerful Chrome extension that enriches your CSV leads with personalized AI-generated pitches using LinkedIn profile data.
 
