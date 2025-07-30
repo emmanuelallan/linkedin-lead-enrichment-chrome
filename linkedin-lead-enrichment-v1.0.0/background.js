@@ -316,44 +316,28 @@ async function handleProfileScraping(message, sender, sendResponse) {
       }
     }
 
-    // Get scroll speed settings
-    const scrollSettings = await chrome.storage.local.get(['scrollSpeed']);
-    const scrollSpeed = scrollSettings.scrollSpeed || 'medium';
-
     // Scrape profile data using improved method
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: (scrollSpeed) => {
+      func: () => {
         // Add human-like delay and scrolling
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        // Get scroll delay based on settings
-        const getScrollDelay = (speed) => {
-          switch (speed) {
-            case 'fast': return 500;
-            case 'slow': return 2000;
-            case 'medium':
-            default: return 1000;
-          }
-        };
-
         // Improved scrolling to load more content
         const scrollAndWait = async () => {
-          const scrollDelay = getScrollDelay(scrollSpeed);
-          
           // Initial scroll to trigger content loading
           window.scrollTo({ top: 0, behavior: 'smooth' });
-          await delay(scrollDelay);
+          await delay(1000);
 
           // Scroll down progressively
           for (let i = 1; i <= 3; i++) {
             window.scrollTo({ top: window.innerHeight * i * 0.3, behavior: 'smooth' });
-            await delay(scrollDelay * 1.5);
+            await delay(1500);
           }
 
           // Scroll back to top
           window.scrollTo({ top: 0, behavior: 'smooth' });
-          await delay(scrollDelay);
+          await delay(1000);
         };
 
         // HTML to text conversion function
@@ -446,8 +430,7 @@ async function handleProfileScraping(message, sender, sendResponse) {
             dataLength: finalText.length
           };
         });
-      },
-      args: [scrollSpeed]
+      }
     });
 
     const result = results[0].result;
@@ -482,12 +465,8 @@ async function handleAIPitchGeneration(message, sender, sendResponse) {
   try {
     const { personName, profileData, serviceType, industryFocus } = message;
 
-    // Get API keys and custom settings from storage
-    const settings = await chrome.storage.local.get([
-      'geminiApiKey', 
-      'openaiApiKey', 
-      'customPrompt'
-    ]);
+    // Get API keys from storage
+    const settings = await chrome.storage.local.get(['geminiApiKey', 'openaiApiKey']);
 
     if (!settings.geminiApiKey && !settings.openaiApiKey) {
       sendResponse({
@@ -598,21 +577,8 @@ Problem 2: Lack of qualified leads and prospects in their target market
 Problem 3: Time-consuming manual processes that could be automated`;
   }
 
-  // Step 3: Generate personalized pitches using custom prompt if available
-  let pitchPrompt;
-  
-  if (settings.customPrompt && settings.customPrompt.trim()) {
-    // Use custom prompt with placeholder replacement
-    pitchPrompt = settings.customPrompt
-      .replace(/{personName}/g, personName)
-      .replace(/{profileData}/g, profileData)
-      .replace(/{serviceType}/g, serviceType)
-      .replace(/{industryFocus}/g, industryFocus)
-      .replace(/{persona}/g, persona)
-      .replace(/{problems}/g, problems);
-  } else {
-    // Use default prompt
-    pitchPrompt = `Create 3 highly personalized LinkedIn outreach messages for ${personName} to promote ${serviceType} services.
+  // Step 3: Generate personalized pitches
+  const pitchPrompt = `Create 3 highly personalized LinkedIn outreach messages for ${personName} to promote ${serviceType} services.
 
 **TARGET PERSONA:**
 ${persona}
@@ -641,7 +607,6 @@ Pitch 2: [Message addressing Problem 2]
 Pitch 3: [Message addressing Problem 3]
 
 Make each message feel like it was written specifically for ${personName} after researching their background.`;
-  }
 
   let pitches = [];
   try {

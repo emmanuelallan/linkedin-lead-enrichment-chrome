@@ -21,9 +21,6 @@ function setupEventListeners() {
     // Settings buttons
     document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
     document.getElementById('closeSettingsBtn').addEventListener('click', toggleSettings);
-    
-    // Custom delay toggle
-    document.getElementById('delaySpeed').addEventListener('change', toggleCustomDelay);
 
     // Session check
     document.getElementById('checkSessionBtn').addEventListener('click', checkLinkedInSession);
@@ -53,35 +50,12 @@ function toggleSettings() {
 
 async function loadSettings() {
     try {
-        const settings = await chrome.storage.local.get([
-            'geminiApiKey', 
-            'openaiApiKey', 
-            'customPrompt', 
-            'delaySpeed', 
-            'customDelay', 
-            'scrollSpeed'
-        ]);
-        
+        const settings = await chrome.storage.local.get(['geminiApiKey', 'openaiApiKey']);
         if (settings.geminiApiKey) {
             document.getElementById('geminiApiKey').value = settings.geminiApiKey;
         }
         if (settings.openaiApiKey) {
             document.getElementById('openaiApiKey').value = settings.openaiApiKey;
-        }
-        if (settings.customPrompt) {
-            document.getElementById('customPrompt').value = settings.customPrompt;
-        }
-        if (settings.delaySpeed) {
-            document.getElementById('delaySpeed').value = settings.delaySpeed;
-            if (settings.delaySpeed === 'custom') {
-                document.getElementById('customDelay').style.display = 'block';
-                if (settings.customDelay) {
-                    document.getElementById('customDelay').value = settings.customDelay;
-                }
-            }
-        }
-        if (settings.scrollSpeed) {
-            document.getElementById('scrollSpeed').value = settings.scrollSpeed;
         }
     } catch (error) {
         console.error('Error loading settings:', error);
@@ -92,25 +66,12 @@ async function saveSettings() {
     try {
         const settings = {
             geminiApiKey: document.getElementById('geminiApiKey').value.trim(),
-            openaiApiKey: document.getElementById('openaiApiKey').value.trim(),
-            customPrompt: document.getElementById('customPrompt').value.trim(),
-            delaySpeed: document.getElementById('delaySpeed').value,
-            customDelay: document.getElementById('customDelay').value,
-            scrollSpeed: document.getElementById('scrollSpeed').value
+            openaiApiKey: document.getElementById('openaiApiKey').value.trim()
         };
 
         if (!settings.geminiApiKey && !settings.openaiApiKey) {
             showStatus('Please provide at least one AI API key', 'error');
             return;
-        }
-
-        // Validate custom delay if selected
-        if (settings.delaySpeed === 'custom') {
-            const delay = parseInt(settings.customDelay);
-            if (!delay || delay < 10 || delay > 300) {
-                showStatus('Custom delay must be between 10 and 300 seconds', 'error');
-                return;
-            }
         }
 
         await chrome.storage.local.set(settings);
@@ -119,17 +80,6 @@ async function saveSettings() {
     } catch (error) {
         console.error('Error saving settings:', error);
         showStatus('Error saving settings', 'error');
-    }
-}
-
-function toggleCustomDelay() {
-    const delaySpeed = document.getElementById('delaySpeed').value;
-    const customDelayInput = document.getElementById('customDelay');
-    
-    if (delaySpeed === 'custom') {
-        customDelayInput.style.display = 'block';
-    } else {
-        customDelayInput.style.display = 'none';
     }
 }
 
@@ -442,8 +392,8 @@ async function startProcessing() {
             try {
                 // Add delay between requests (except first)
                 if (i > 0) {
-                    const delay = await getProcessingDelay();
-                    updateProgress(i + 1, currentCSVData.length, `Waiting ${Math.round(delay / 1000)} seconds before processing ${leadName}...`);
+                    const delay = Math.floor(Math.random() * 30000) + 60000; // 1-1.5 minutes
+                    updateProgress(i + 1, currentCSVData.length, `Waiting ${Math.round(delay / 60000)} minutes before processing ${leadName}...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
 
@@ -637,29 +587,6 @@ function showResults() {
 function updateStepStatus(stepNumber, status) {
     const step = document.getElementById(`step${stepNumber}`);
     step.className = `step ${status}`;
-}
-
-async function getProcessingDelay() {
-    try {
-        const settings = await chrome.storage.local.get(['delaySpeed', 'customDelay']);
-        const delaySpeed = settings.delaySpeed || 'medium';
-        
-        switch (delaySpeed) {
-            case 'fast':
-                return Math.floor(Math.random() * 30000) + 30000; // 30-60 seconds
-            case 'slow':
-                return Math.floor(Math.random() * 60000) + 120000; // 2-3 minutes
-            case 'custom':
-                const customDelay = parseInt(settings.customDelay) || 90;
-                return customDelay * 1000; // Convert to milliseconds
-            case 'medium':
-            default:
-                return Math.floor(Math.random() * 30000) + 60000; // 1-1.5 minutes
-        }
-    } catch (error) {
-        console.error('Error getting processing delay:', error);
-        return 90000; // Default to 1.5 minutes
-    }
 }
 
 function showStatus(message, type) {
