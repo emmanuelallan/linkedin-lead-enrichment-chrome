@@ -384,6 +384,41 @@ async function handleProfileScraping(message, sender, sendResponse) {
         };
 
         return scrollAndWait().then(() => {
+          // First check for 404 or error pages
+          const pageTitle = document.title.toLowerCase();
+          const bodyText = document.body.innerText.toLowerCase();
+          
+          // Check for 404 indicators
+          const is404Page = 
+            pageTitle.includes('page not found') ||
+            pageTitle.includes('404') ||
+            pageTitle.includes('not found') ||
+            bodyText.includes('page not found') ||
+            bodyText.includes('this page doesn\'t exist') ||
+            bodyText.includes('profile not found') ||
+            bodyText.includes('user not found') ||
+            document.querySelector('.error-404') ||
+            document.querySelector('[data-test="error-404"]') ||
+            document.querySelector('.not-found');
+          
+          // Check for LinkedIn-specific error indicators
+          const isLinkedInError = 
+            bodyText.includes('this linkedin member doesn\'t exist') ||
+            bodyText.includes('profile unavailable') ||
+            bodyText.includes('member profile not found') ||
+            document.querySelector('.profile-unavailable');
+          
+          if (is404Page || isLinkedInError) {
+            return {
+              success: false,
+              is404: true,
+              data: '',
+              url: window.location.href,
+              method: '404_detected',
+              message: 'Profile not found (404 or error page detected)'
+            };
+          }
+          
           // Get main content using the <main> tag approach
           const mainElement = document.querySelector('main');
 

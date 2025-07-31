@@ -275,16 +275,21 @@ function parseCSV(text, filename) {
     csvHeaders = parseCSVLine(lines[0]);
     console.log('Parsed headers:', csvHeaders);
 
-    // Parse data rows
+    // Parse data rows - only include rows with actual data
     currentCSVData = [];
     for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim()) { // Skip empty lines
+        if (lines[i].trim()) { // Skip completely empty lines
             const values = parseCSVLine(lines[i]);
             const row = {};
             csvHeaders.forEach((header, index) => {
                 row[header] = values[index] || '';
             });
-            currentCSVData.push(row);
+            
+            // Only add rows that have at least one non-empty value
+            const hasData = Object.values(row).some(value => value && value.trim() !== '');
+            if (hasData) {
+                currentCSVData.push(row);
+            }
         }
     }
 
@@ -655,6 +660,9 @@ async function scrapeProfile(profileUrl) {
         }, (response) => {
             if (response.success) {
                 resolve(response.data);
+            } else if (response.is404) {
+                // Handle 404 pages specifically
+                reject(new Error(`Profile not found (404): ${response.message}`));
             } else {
                 reject(new Error(response.message));
             }
@@ -662,7 +670,7 @@ async function scrapeProfile(profileUrl) {
     });
 }
 
-// Enhanced scrape profile with timeout handling for 404 pages
+// Enhanced scrape profile with timeout handling and 404 detection
 async function scrapeProfileWithTimeout(profileUrl, leadName) {
     try {
         // Get timeout setting
@@ -686,11 +694,13 @@ async function scrapeProfileWithTimeout(profileUrl, leadName) {
         return result;
         
     } catch (error) {
-        // Handle timeout or other errors
+        // Handle different types of errors
         if (error.message.includes('Timeout:')) {
             console.log(`Skipping ${leadName} due to timeout (likely 404 or error page)`);
-            // Return minimal data to indicate timeout/404
             return `Profile timeout for ${leadName}. URL: ${profileUrl}. This may be a 404 or error page.`;
+        } else if (error.message.includes('Profile not found') || error.message.includes('404')) {
+            console.log(`Skipping ${leadName} - 404 page detected`);
+            return `Profile not found for ${leadName}. URL: ${profileUrl}. 404 or error page detected.`;
         } else {
             // Re-throw other errors
             throw error;
