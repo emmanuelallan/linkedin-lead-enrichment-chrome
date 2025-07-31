@@ -239,85 +239,140 @@ async function handleFile(file) {
     }
 }
 
-// Enhanced CSV parsing with proper row filtering
+// Enhanced CSV parsing with proper handling of complex quoted fields
 function parseCSV(text, filename) {
-    const lines = text.trim().split('\n').filter(line => line.trim() !== ''); // Remove empty lines immediately
-    if (lines.length < 2) {
-        showStatus('CSV file must have at least a header and one data row', 'error');
-        return;
-    }
-
-    // Improved CSV parsing function that handles quotes and commas properly
-    function parseCSVLine(line) {
-        const result = [];
-        let current = '';
+    console.log('Starting CSV parsing for file:', filename);
+    
+    // Use a more robust CSV parsing approach
+    function parseCSVText(csvText) {
+        const rows = [];
+        let currentRow = [];
+        let currentField = '';
         let inQuotes = false;
-
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-
+        let i = 0;
+        
+        while (i < csvText.length) {
+            const char = csvText[i];
+            const nextChar = csvText[i + 1];
+            
             if (char === '"') {
-                if (inQuotes && line[i + 1] === '"') {
-                    // Escaped quote
-                    current += '"';
-                    i++; // Skip next quote
+                if (inQuotes && nextChar === '"') {
+                    // Escaped quote - add one quote to field
+                    currentField += '"';
+                    i += 2; // Skip both quotes
+                    continue;
                 } else {
                     // Toggle quote state
                     inQuotes = !inQuotes;
                 }
             } else if (char === ',' && !inQuotes) {
                 // Field separator
-                result.push(current.trim());
-                current = '';
+                currentRow.push(currentField.trim());
+                currentField = '';
+            } else if ((char === '\n' || char === '\r') && !inQuotes) {
+                // End of row
+                if (currentField || currentRow.length > 0) {
+                    currentRow.push(currentField.trim());
+                    if (currentRow.some(field => field !== '')) {
+                        rows.push(currentRow);
+                    }
+                }
+                currentRow = [];
+                currentField = '';
+                
+                // Skip \r\n combinations
+                if (char === '\r' && nextChar === '\n') {
+                    i++;
+                }
             } else {
-                current += char;
+                currentField += char;
+            }
+            
+            i++;
+        }
+        
+        // Add the last field and row if they exist
+        if (currentField || currentRow.length > 0) {
+            currentRow.push(currentField.trim());
+            if (currentRow.some(field => field !== '')) {
+                rows.push(currentRow);
             }
         }
-
-        // Add the last field
-        result.push(current.trim());
-        return result;
+        
+        return rows;
     }
-
-    // Parse headers
-    csvHeaders = parseCSVLine(lines[0]);
-    console.log('Parsed headers:', csvHeaders);
-
-    // Parse data rows with strict filtering
+    
+    const rows = parseCSVText(text);
+    console.log(`Parsed ${rows.length} total rows from CSV`);
+    
+    if (rows.length < 2) {
+        showStatus('CSV file must have at least a header and one data row', 'error');
+        return;
+    }
+    
+    // Extract headers
+    csvHeaders = rows[0];
+    console.log('Headers found:', csvHeaders);
+    console.log('Number of headers:', csvHeaders.length);
+    
+    // Process data rows
     currentCSVData = [];
     let skippedEmptyRows = 0;
     
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) {
+    for (let i = 1; i < rows.length; i++) {
+        const values = rows[i];
+        
+        // Skip rows that don't have enough data
+        if (values.length < csvHeaders.length / 2) {
             skippedEmptyRows++;
-            continue; // Skip completely empty lines
+            console.log(`Row ${i + 1} skipped - insufficient data (${values.length} fields)`);
+            continue;
         }
-
-        const values = parseCSVLine(line);
+        
+        // Create row object
         const row = {};
         csvHeaders.forEach((header, index) => {
-            row[header] = values[index] ? values[index].trim() : '';
+            row[header] = values[index] ? String(values[index]).trim() : '';
         });
-
-        // Enhanced row validation - check if row has meaningful data
-        const hasNonEmptyValues = Object.values(row).some(value => 
-            value !== null && 
-            value !== undefined && 
-            String(value).trim() !== '' && 
-            String(value).trim() !== 'null' && 
-            String(value).trim() !== 'undefined'
+        
+        // Check if row has meaningful data
+        const hasValidData = Object.values(row).some(value => 
+            value && 
+            value !== 'null' && 
+            value !== 'undefined' && 
+            value.length > 0
         );
-
-        if (hasNonEmptyValues) {
+        
+        if (hasValidData) {
             currentCSVData.push(row);
+            
+            // Log sample data for debugging
+            if (i <= 3) {
+                console.log(`Row ${i + 1} sample:`, {
+                    'Full name': row['Full name'],
+                    'LinkedIn': row['LinkedIn'], 
+                    'Company Name': row['Company Name'],
+                    'Job Title': row['Job Title']
+                });
+            }
         } else {
             skippedEmptyRows++;
+            console.log(`Row ${i + 1} skipped - no meaningful data`);
         }
     }
-
-    console.log(`Parsed ${currentCSVData.length} valid rows (skipped ${skippedEmptyRows} empty rows) with headers:`, csvHeaders);
-    console.log('Sample data from first row:', currentCSVData[0]);
+    
+    console.log(`Successfully parsed ${currentCSVData.length} valid rows (skipped ${skippedEmptyRows} empty rows)`);
+    
+    if (currentCSVData.length === 0) {
+        showStatus('No valid data rows found in CSV file', 'error');
+        return;
+    }
+    
+    // Log first row for debugging
+    if (currentCSVData.length > 0) {
+        console.log('First row data:', currentCSVData[0]);
+    }
+    
     showCSVPreview();
     populateColumnSelectors();
 }
