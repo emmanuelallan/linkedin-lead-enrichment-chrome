@@ -618,17 +618,17 @@ Problem 3: Time-consuming manual processes that could be automated`;
     // Use default prompt
     pitchPrompt = `Create 3 highly personalized LinkedIn outreach messages for ${personName} to promote ${serviceType} services.
 
-**TARGET PERSONA:**
+TARGET PERSONA:
 ${persona}
 
-**PROBLEMS TO ADDRESS:**
+PROBLEMS TO ADDRESS:
 ${problems}
 
-**SERVICE DETAILS:**
+SERVICE DETAILS:
 - Service: ${serviceType}
 - Industry Focus: ${industryFocus}
 
-**REQUIREMENTS FOR EACH PITCH:**
+REQUIREMENTS FOR EACH PITCH:
 - Maximum 2-3 sentences (LinkedIn message length)
 - Personalized to ${personName} specifically
 - Reference their role, company, or industry naturally
@@ -636,15 +636,17 @@ ${problems}
 - Include a soft call-to-action
 - Professional but conversational tone
 - NO generic templates or spammy language
+- OUTPUT PLAIN TEXT ONLY - NO MARKDOWN, NO QUOTES, NO SPECIAL FORMATTING
+- Each pitch should be ready to copy and paste directly into LinkedIn
 
-**FORMAT:**
-Pitch 1: [Message addressing Problem 1]
+FORMAT:
+Pitch 1: [Plain text message addressing Problem 1]
 
-Pitch 2: [Message addressing Problem 2]
+Pitch 2: [Plain text message addressing Problem 2]
 
-Pitch 3: [Message addressing Problem 3]
+Pitch 3: [Plain text message addressing Problem 3]
 
-Make each message feel like it was written specifically for ${personName} after researching their background.`;
+Make each message feel like it was written specifically for ${personName} after researching their background. Output clean, plain text that can be used directly without any formatting.`;
   }
 
   let pitches = [];
@@ -656,7 +658,7 @@ Make each message feel like it was written specifically for ${personName} after 
 
     if (pitchMatches && pitchMatches.length >= 3) {
       pitches = pitchMatches.slice(0, 3).map(match => {
-        return match.replace(/Pitch \d+:\s*/, '').trim();
+        return cleanPitchText(match.replace(/Pitch \d+:\s*/, '').trim());
       });
     } else {
       // Fallback: split by lines and find pitch content
@@ -668,7 +670,7 @@ Make each message feel like it was written specifically for ${personName} after 
 
       if (pitchLines.length >= 3) {
         pitches = pitchLines.slice(0, 3).map(line =>
-          line.replace(/^Pitch \d+:\s*/i, '').trim()
+          cleanPitchText(line.replace(/^Pitch \d+:\s*/i, '').trim())
         );
       }
     }
@@ -692,6 +694,42 @@ Make each message feel like it was written specifically for ${personName} after 
   return pitches.slice(0, 3);
 }
 
+// Function to clean pitch text and remove any formatting
+function cleanPitchText(text) {
+  if (!text) return '';
+  
+  return text
+    // Remove markdown formatting
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold **text**
+    .replace(/\*(.*?)\*/g, '$1') // Remove italic *text*
+    .replace(/__(.*?)__/g, '$1') // Remove underline __text__
+    .replace(/_(.*?)_/g, '$1') // Remove italic _text_
+    .replace(/`(.*?)`/g, '$1') // Remove code `text`
+    .replace(/~~(.*?)~~/g, '$1') // Remove strikethrough ~~text~~
+    
+    // Remove quotes and brackets
+    .replace(/^["'`]+|["'`]+$/g, '') // Remove leading/trailing quotes
+    .replace(/^\[|\]$/g, '') // Remove square brackets at start/end
+    .replace(/^\(|\)$/g, '') // Remove parentheses at start/end
+    
+    // Remove common formatting prefixes
+    .replace(/^(Message|Pitch|Text):\s*/i, '') // Remove "Message:", "Pitch:", etc.
+    .replace(/^-\s*/, '') // Remove leading dash
+    .replace(/^\d+\.\s*/, '') // Remove leading numbers like "1. "
+    
+    // Clean up whitespace and special characters
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .replace(/\n+/g, ' ') // Replace newlines with spaces
+    .replace(/\t+/g, ' ') // Replace tabs with spaces
+    
+    // Remove any remaining special formatting characters
+    .replace(/[#@$%^&*+=<>{}|\\]/g, '') // Remove special characters
+    
+    // Final cleanup
+    .trim()
+    .replace(/\s+/g, ' '); // Final whitespace normalization
+}
+
 function generateFallbackPitch(personName, companyName, serviceType, industryFocus, pitchNumber) {
   const templates = [
     `Hi ${personName}, I noticed your work ${companyName ? `at ${companyName}` : `in ${industryFocus}`}. Our ${serviceType} services have helped similar ${industryFocus} professionals streamline their operations. Would you be open to a brief conversation?`,
@@ -701,7 +739,8 @@ function generateFallbackPitch(personName, companyName, serviceType, industryFoc
     `Hello ${personName}, I've been working with ${industryFocus} companies to improve their ${serviceType} results. Given your role${companyName ? ` at ${companyName}` : ''}, I'd love to share some insights that might be relevant. Are you available for a quick chat?`
   ];
 
-  return templates[pitchNumber - 1] || templates[0];
+  // Clean the fallback pitch text as well
+  return cleanPitchText(templates[pitchNumber - 1] || templates[0]);
 }
 
 function extractCompanyInfo(lead, config) {

@@ -533,6 +533,9 @@
                     <div class="step-title">Customize Pitch Generation</div>
                 </div>
                 <div id="pitchCustomization" class="hidden">
+                    <div class="status-indicator" style="background: rgba(59, 130, 246, 0.1); color: #1d4ed8; margin-bottom: 1rem;">
+                        ℹ️ All generated pitches will be plain text without any formatting - ready to copy and paste directly into LinkedIn
+                    </div>
                     <div class="form-group">
                         <label for="serviceType">Your Service Type *</label>
                         <input type="text" id="serviceType"
@@ -558,11 +561,13 @@ Requirements:
 - Mention their industry ({industryFocus})
 - Include a clear value proposition
 - End with a question to encourage response
+- OUTPUT PLAIN TEXT ONLY - NO MARKDOWN, NO QUOTES, NO FORMATTING
+- Each pitch should be ready to copy and paste directly
 
 Format as:
-Message 1: [Your first pitch]
-Message 2: [Your second pitch] 
-Message 3: [Your third pitch]"></textarea>
+Pitch 1: [Plain text message]
+Pitch 2: [Plain text message] 
+Pitch 3: [Plain text message]"></textarea>
                         <small>Available placeholders: {personName}, {profileData}, {serviceType}, {industryFocus}, {persona}, {problems}. Leave empty for default prompt.</small>
                     </div>
                     <button class="btn" id="validatePitchConfigBtn">✓ Validate Pitch Configuration</button>
