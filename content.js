@@ -7,6 +7,7 @@ console.log('LinkedIn Lead Enrichment: Content script loaded');
 let currentSessionState = null;
 let sessionCheckInterval = null;
 let isInitialized = false;
+let extensionContextValid = true;
 
 // Optimized initialization - only start when needed
 function initializeWhenNeeded() {
@@ -294,6 +295,15 @@ function startSessionMonitoring() {
   }, 1000);
 }
 
+// Stop session monitoring (for cleanup when extension context is invalidated)
+function stopSessionMonitoring() {
+  if (sessionCheckInterval) {
+    clearInterval(sessionCheckInterval);
+    sessionCheckInterval = null;
+  }
+  console.log('Session monitoring stopped');
+}
+
 // Perform a session check and notify if state changed
 function performSessionCheck() {
   try {
@@ -305,15 +315,38 @@ function performSessionCheck() {
 
       currentSessionState = sessionData.isLoggedIn;
 
-      // Notify background script of session change
-      chrome.runtime.sendMessage({
-        type: 'SESSION_CHANGED',
-        newState: sessionData.isLoggedIn,
-        sessionData: sessionData,
-        url: window.location.href
-      }).catch(error => {
-        console.log('Could not send session change message:', error);
-      });
+      // Only try to communicate if extension context is still valid
+      if (!extensionContextValid) {
+        return;
+      }
+
+      // Notify background script of session change with proper error handling
+      try {
+        chrome.runtime.sendMessage({
+          type: 'SESSION_CHANGED',
+          newState: sessionData.isLoggedIn,
+          sessionData: sessionData,
+          url: window.location.href
+        }).catch(error => {
+          // Handle extension context invalidated error
+          if (error.message && error.message.includes('Extension context invalidated')) {
+            console.log('Extension context invalidated - stopping session monitoring');
+            extensionContextValid = false;
+            stopSessionMonitoring();
+            return;
+          }
+          console.log('Could not send session change message:', error);
+        });
+      } catch (error) {
+        // Handle synchronous errors (extension context invalidated)
+        if (error.message && error.message.includes('Extension context invalidated')) {
+          console.log('Extension context invalidated - stopping session monitoring');
+          extensionContextValid = false;
+          stopSessionMonitoring();
+          return;
+        }
+        console.log('Error sending session change message:', error);
+      }
     }
 
     currentSessionState = sessionData.isLoggedIn;
