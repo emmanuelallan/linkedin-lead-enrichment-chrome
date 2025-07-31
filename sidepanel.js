@@ -3,7 +3,10 @@ let currentCSVData = null;
 let csvHeaders = [];
 let enrichedResults = [];
 let isProcessing = false;
+let isPaused = false;
+let isStopped = false;
 let startTime = null;
+let currentProcessingIndex = 0;
 
 // Initialize extension
 document.addEventListener('DOMContentLoaded', async () => {
@@ -42,6 +45,11 @@ function setupEventListeners() {
 
     // Processing
     document.getElementById('startProcessingBtn').addEventListener('click', startProcessing);
+    
+    // Processing controls
+    document.getElementById('pauseProcessingBtn').addEventListener('click', pauseProcessing);
+    document.getElementById('resumeProcessingBtn').addEventListener('click', resumeProcessing);
+    document.getElementById('stopProcessingBtn').addEventListener('click', stopProcessing);
 
     // Results
     document.getElementById('downloadResultsBtn').addEventListener('click', downloadResults);
@@ -64,7 +72,8 @@ async function loadSettings() {
             'openaiApiKey', 
             'delaySpeed', 
             'customDelay', 
-            'scrollSpeed'
+            'scrollSpeed',
+            'pageTimeout'
         ]);
         
         if (settings.geminiApiKey) {
@@ -85,6 +94,9 @@ async function loadSettings() {
         if (settings.scrollSpeed) {
             document.getElementById('scrollSpeed').value = settings.scrollSpeed;
         }
+        if (settings.pageTimeout) {
+            document.getElementById('pageTimeout').value = settings.pageTimeout;
+        }
     } catch (error) {
         console.error('Error loading settings:', error);
     }
@@ -97,7 +109,8 @@ async function saveSettings() {
             openaiApiKey: document.getElementById('openaiApiKey').value.trim(),
             delaySpeed: document.getElementById('delaySpeed').value,
             customDelay: document.getElementById('customDelay').value,
-            scrollSpeed: document.getElementById('scrollSpeed').value
+            scrollSpeed: document.getElementById('scrollSpeed').value,
+            pageTimeout: document.getElementById('pageTimeout').value
         };
 
         if (!settings.geminiApiKey && !settings.openaiApiKey) {
@@ -451,14 +464,49 @@ function validatePitchConfiguration() {
     }
 }
 
+// Processing Control Functions
+function pauseProcessing() {
+    isPaused = true;
+    document.getElementById('pauseProcessingBtn').classList.add('hidden');
+    document.getElementById('resumeProcessingBtn').classList.remove('hidden');
+    updateProgress(currentProcessingIndex, currentCSVData.length, 'Processing paused...');
+    showStatus('Processing paused. Click Resume to continue.', 'warning');
+}
+
+function resumeProcessing() {
+    isPaused = false;
+    document.getElementById('pauseProcessingBtn').classList.remove('hidden');
+    document.getElementById('resumeProcessingBtn').classList.add('hidden');
+    showStatus('Processing resumed', 'success');
+}
+
+function stopProcessing() {
+    isStopped = true;
+    isProcessing = false;
+    
+    // Hide processing controls and show completion section
+    document.getElementById('activeProcessingControls').classList.add('hidden');
+    document.getElementById('completionSection').classList.remove('hidden');
+    
+    // Update status
+    updateStepStatus(5, 'completed');
+    updateProgress(currentProcessingIndex, currentCSVData.length, `Processing stopped. ${enrichedResults.length} leads processed.`);
+    showStatus(`Processing stopped. ${enrichedResults.length} leads have been processed and are ready for download.`, 'warning');
+}
+
 // Lead Processing
 async function startProcessing() {
     if (isProcessing) return;
 
     try {
         isProcessing = true;
+        isPaused = false;
+        isStopped = false;
+        currentProcessingIndex = 0;
+        
         document.getElementById('startProcessingBtn').disabled = true;
         document.getElementById('progressSection').classList.remove('hidden');
+        document.getElementById('activeProcessingControls').classList.remove('hidden');
 
         const config = {
             nameColumn: document.getElementById('nameColumn').value,
@@ -478,6 +526,25 @@ async function startProcessing() {
         updateProgress(0, currentCSVData.length, 'Starting processing...');
 
         for (let i = 0; i < currentCSVData.length; i++) {
+            currentProcessingIndex = i;
+            
+            // Check if processing should stop
+            if (isStopped) {
+                console.log('Processing stopped by user');
+                break;
+            }
+            
+            // Handle pause functionality
+            while (isPaused && !isStopped) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
+            }
+            
+            // Check again after pause in case user stopped during pause
+            if (isStopped) {
+                console.log('Processing stopped by user during pause');
+                break;
+            }
+            
             const lead = currentCSVData[i];
             const leadName = lead[config.nameColumn] || `Lead ${i + 1}`;
             
@@ -489,6 +556,25 @@ async function startProcessing() {
                 profileUrl = lead[config.salesNavigatorColumn];
             }
 
+            // Validate profile URL before processing
+            if (!profileUrl || typeof profileUrl !== 'string' || profileUrl.trim() === '') {
+                console.log(`Skipping ${leadName} - no valid LinkedIn profile URL found`);
+                
+                const enrichedLead = {
+                    ...lead,
+                    pitch_1: '',
+                    pitch_2: '',
+                    pitch_3: '',
+                    enrichment_status: 'skipped',
+                    error_message: 'No valid LinkedIn profile URL provided',
+                    skipped_date: new Date().toISOString()
+                };
+                
+                enrichedResults.push(enrichedLead);
+                updateProgress(i + 1, currentCSVData.length, `Skipped ${leadName} - no profile URL`);
+                continue;
+            }
+
             updateProgress(i + 1, currentCSVData.length, `Processing ${leadName}...`);
 
             try {
@@ -496,12 +582,19 @@ async function startProcessing() {
                 if (i > 0) {
                     const delay = await getProcessingDelay();
                     updateProgress(i + 1, currentCSVData.length, `Waiting ${Math.round(delay / 1000)} seconds before processing ${leadName}...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
+                    
+                    // Handle pause during delay
+                    for (let delayCount = 0; delayCount < delay / 1000; delayCount++) {
+                        if (isStopped || isPaused) break;
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                    
+                    if (isStopped) break;
                 }
 
-                // Scrape profile
+                // Scrape profile with timeout handling
                 updateProgress(i + 1, currentCSVData.length, `Scraping profile for ${leadName}...`);
-                const profileData = await scrapeProfile(profileUrl);
+                const profileData = await scrapeProfileWithTimeout(profileUrl, leadName);
 
                 // Generate AI pitches
                 updateProgress(i + 1, currentCSVData.length, `Generating AI pitches for ${leadName}...`);
@@ -538,10 +631,13 @@ async function startProcessing() {
             }
         }
 
-        // Processing complete
-        updateStepStatus(5, 'completed');
-        document.getElementById('completionSection').classList.remove('hidden');
-        showStatus('Lead enrichment completed successfully!', 'success');
+        // Processing complete (only if not stopped by user)
+        if (!isStopped) {
+            updateStepStatus(5, 'completed');
+            document.getElementById('activeProcessingControls').classList.add('hidden');
+            document.getElementById('completionSection').classList.remove('hidden');
+            showStatus('Lead enrichment completed successfully!', 'success');
+        }
 
     } catch (error) {
         console.error('Fatal processing error:', error);
@@ -564,6 +660,42 @@ async function scrapeProfile(profileUrl) {
             }
         });
     });
+}
+
+// Enhanced scrape profile with timeout handling for 404 pages
+async function scrapeProfileWithTimeout(profileUrl, leadName) {
+    try {
+        // Get timeout setting
+        const settings = await chrome.storage.local.get(['pageTimeout']);
+        const timeoutSeconds = parseInt(settings.pageTimeout) || 10;
+        const timeoutMs = timeoutSeconds * 1000;
+        
+        // Create a timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                reject(new Error(`Timeout: Profile page took longer than ${timeoutSeconds} seconds to load (likely 404 or error page)`));
+            }, timeoutMs);
+        });
+        
+        // Race between scraping and timeout
+        const scrapePromise = scrapeProfile(profileUrl);
+        
+        const result = await Promise.race([scrapePromise, timeoutPromise]);
+        
+        // If we get here, scraping succeeded within timeout
+        return result;
+        
+    } catch (error) {
+        // Handle timeout or other errors
+        if (error.message.includes('Timeout:')) {
+            console.log(`Skipping ${leadName} due to timeout (likely 404 or error page)`);
+            // Return minimal data to indicate timeout/404
+            return `Profile timeout for ${leadName}. URL: ${profileUrl}. This may be a 404 or error page.`;
+        } else {
+            // Re-throw other errors
+            throw error;
+        }
+    }
 }
 
 async function generatePitches(personName, profileData, serviceType, industryFocus, customPrompt) {
