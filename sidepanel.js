@@ -7,6 +7,7 @@ let isPaused = false;
 let isStopped = false;
 let startTime = null;
 let currentProcessingIndex = 0;
+let validLeadsCount = 0; // Track valid leads after filtering
 
 // Initialize extension
 document.addEventListener('DOMContentLoaded', async () => {
@@ -73,7 +74,8 @@ async function loadSettings() {
             'delaySpeed', 
             'customDelay', 
             'scrollSpeed',
-            'pageTimeout'
+            'pageTimeout',
+            'pausedProcessingState' // Load paused state if exists
         ]);
         
         if (settings.geminiApiKey) {
@@ -96,6 +98,11 @@ async function loadSettings() {
         }
         if (settings.pageTimeout) {
             document.getElementById('pageTimeout').value = settings.pageTimeout;
+        }
+        
+        // Restore paused state if exists
+        if (settings.pausedProcessingState) {
+            await restorePausedState(settings.pausedProcessingState);
         }
     } catch (error) {
         console.error('Error loading settings:', error);
@@ -232,8 +239,9 @@ async function handleFile(file) {
     }
 }
 
+// Enhanced CSV parsing with proper row filtering
 function parseCSV(text, filename) {
-    const lines = text.trim().split('\n');
+    const lines = text.trim().split('\n').filter(line => line.trim() !== ''); // Remove empty lines immediately
     if (lines.length < 2) {
         showStatus('CSV file must have at least a header and one data row', 'error');
         return;
@@ -275,44 +283,59 @@ function parseCSV(text, filename) {
     csvHeaders = parseCSVLine(lines[0]);
     console.log('Parsed headers:', csvHeaders);
 
-    // Parse data rows - only include rows with actual data
+    // Parse data rows with strict filtering
     currentCSVData = [];
+    let skippedEmptyRows = 0;
+    
     for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim()) { // Skip completely empty lines
-            const values = parseCSVLine(lines[i]);
-            const row = {};
-            csvHeaders.forEach((header, index) => {
-                row[header] = values[index] || '';
-            });
-            
-            // Only add rows that have at least one non-empty value
-            const hasData = Object.values(row).some(value => value && value.trim() !== '');
-            if (hasData) {
-                currentCSVData.push(row);
-            }
+        const line = lines[i].trim();
+        if (!line) {
+            skippedEmptyRows++;
+            continue; // Skip completely empty lines
+        }
+
+        const values = parseCSVLine(line);
+        const row = {};
+        csvHeaders.forEach((header, index) => {
+            row[header] = values[index] ? values[index].trim() : '';
+        });
+
+        // Enhanced row validation - check if row has meaningful data
+        const hasNonEmptyValues = Object.values(row).some(value => 
+            value !== null && 
+            value !== undefined && 
+            String(value).trim() !== '' && 
+            String(value).trim() !== 'null' && 
+            String(value).trim() !== 'undefined'
+        );
+
+        if (hasNonEmptyValues) {
+            currentCSVData.push(row);
+        } else {
+            skippedEmptyRows++;
         }
     }
 
+    console.log(`Parsed ${currentCSVData.length} valid rows (skipped ${skippedEmptyRows} empty rows) with headers:`, csvHeaders);
     showCSVPreview();
     populateColumnSelectors();
-
-    console.log(`Parsed ${currentCSVData.length} rows with headers:`, csvHeaders);
 }
 
 function showCSVPreview() {
     const preview = document.getElementById('csvPreview');
-    let html = `<h4>CSV Preview (${currentCSVData.length} rows)</h4><table><thead><tr>`;
+    let html = `<h4>CSV Preview (${currentCSVData.length} valid rows found)</h4><table><thead><tr>`;
 
     csvHeaders.forEach(header => {
         html += `<th>${header}</th>`;
     });
     html += '</tr></thead><tbody>';
 
-    // Show first 3 rows
+    // Show first 3 valid rows
     currentCSVData.slice(0, 3).forEach(row => {
         html += '<tr>';
         csvHeaders.forEach(header => {
-            html += `<td>${row[header] || ''}</td>`;
+            const value = row[header] || '';
+            html += `<td>${value}</td>`;
         });
         html += '</tr>';
     });
@@ -322,12 +345,13 @@ function showCSVPreview() {
     preview.classList.remove('hidden');
 }
 
+// Enhanced column detection with data content analysis
 function populateColumnSelectors() {
     const selectors = ['nameColumn', 'linkedinColumn', 'companyColumn', 'salesNavigatorColumn'];
 
     selectors.forEach(selectorId => {
         const select = document.getElementById(selectorId);
-        if (!select) return; // Skip if element doesn't exist
+        if (!select) return;
         
         const firstOption = select.options[0];
         select.innerHTML = '';
@@ -340,14 +364,14 @@ function populateColumnSelectors() {
             select.appendChild(option);
         });
 
-        // Auto-suggest based on column names
-        autoSuggestColumn(select, selectorId);
+        // Enhanced auto-suggestion with data content analysis
+        autoSuggestColumnEnhanced(select, selectorId);
     });
 
     document.getElementById('columnMapping').classList.remove('hidden');
 }
 
-function autoSuggestColumn(select, selectorId) {
+function autoSuggestColumnEnhanced(select, selectorId) {
     const suggestions = {
         nameColumn: [
             'fullname', 'full_name', 'name', 'firstname', 'first_name',
@@ -368,44 +392,98 @@ function autoSuggestColumn(select, selectorId) {
     };
 
     const targetSuggestions = suggestions[selectorId] || [];
+    let bestMatch = null;
+    let bestScore = 0;
 
-    // First try exact matches
-    for (const header of csvHeaders) {
+    // Analyze each column
+    csvHeaders.forEach(header => {
+        let score = 0;
         const lowerHeader = header.toLowerCase().replace(/[^a-z]/g, '');
-        for (const suggestion of targetSuggestions) {
-            if (lowerHeader === suggestion.replace(/[^a-z]/g, '')) {
-                select.value = header;
-                return;
-            }
-        }
-    }
 
-    // Then try partial matches
-    for (const header of csvHeaders) {
-        const lowerHeader = header.toLowerCase();
+        // Title-based scoring
         for (const suggestion of targetSuggestions) {
-            if (lowerHeader.includes(suggestion) || suggestion.includes(lowerHeader.replace(/[^a-z]/g, ''))) {
-                select.value = header;
-                return;
+            const suggestionClean = suggestion.replace(/[^a-z]/g, '');
+            if (lowerHeader === suggestionClean) {
+                score += 100; // Exact match
+            } else if (lowerHeader.includes(suggestionClean) || suggestionClean.includes(lowerHeader)) {
+                score += 50; // Partial match
             }
         }
-    }
 
-    // For LinkedIn column, check data content
-    if (selectorId === 'linkedinColumn' && !select.value && currentCSVData.length > 0) {
-        for (const header of csvHeaders) {
-            const hasLinkedInData = currentCSVData.slice(0, 5).some(row => {
-                const value = (row[header] || '').toLowerCase();
-                return value.includes('linkedin.com/in/') || value.includes('linkedin.com/pub/');
-            });
-            if (hasLinkedInData) {
-                select.value = header;
-                return;
-            }
+        // Content-based scoring (analyze first 3 rows)
+        const sampleRows = currentCSVData.slice(0, 3);
+        const contentScore = analyzeColumnContent(header, sampleRows, selectorId);
+        score += contentScore;
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestMatch = header;
         }
+    });
+
+    if (bestMatch && bestScore > 30) { // Minimum threshold
+        select.value = bestMatch;
+        console.log(`Auto-selected ${bestMatch} for ${selectorId} with score ${bestScore}`);
     }
 }
 
+function analyzeColumnContent(header, sampleRows, selectorId) {
+    let score = 0;
+    
+    sampleRows.forEach(row => {
+        const value = (row[header] || '').toLowerCase().trim();
+        if (!value) return;
+
+        switch (selectorId) {
+            case 'linkedinColumn':
+                if (value.includes('linkedin.com/in/') || value.includes('linkedin.com/pub/')) {
+                    score += 200; // Strong indicator
+                } else if (value.includes('linkedin') && value.includes('/')) {
+                    score += 100; // Moderate indicator
+                } else if (value.match(/^[a-zA-Z0-9\-]+$/) && value.length > 3 && value.length < 50) {
+                    score += 50; // Possible username
+                }
+                break;
+                
+            case 'salesNavigatorColumn':
+                if (value.includes('sales.linkedin.com') || value.includes('linkedin.com/sales/')) {
+                    score += 200; // Strong indicator
+                } else if (value.includes('sales') && value.includes('linkedin')) {
+                    score += 100; // Moderate indicator
+                }
+                break;
+                
+            case 'nameColumn':
+                // Check for name patterns
+                const words = value.split(' ').filter(w => w.length > 0);
+                if (words.length >= 2 && words.length <= 4) {
+                    const hasCapitals = words.every(word => /^[A-Z]/.test(word));
+                    if (hasCapitals) score += 100; // Likely a name
+                    else score += 50; // Possible name
+                }
+                // Avoid columns that look like emails or URLs
+                if (value.includes('@') || value.includes('http')) {
+                    score -= 100;
+                }
+                break;
+                
+            case 'companyColumn':
+                // Check for company patterns
+                if (value.includes('inc') || value.includes('ltd') || value.includes('corp') || 
+                    value.includes('llc') || value.includes('company') || value.includes('co.')) {
+                    score += 100; // Strong company indicator
+                } else if (value.length > 2 && value.length < 100 && 
+                          !value.includes('@') && !value.includes('http')) {
+                    score += 30; // Possible company name
+                }
+                break;
+        }
+    });
+
+    return score;
+}
+
+// Enhanced validation with lead filtering
 function validateConfiguration() {
     const required = ['nameColumn', 'linkedinColumn'];
     let isValid = true;
@@ -421,13 +499,69 @@ function validateConfiguration() {
     });
 
     if (isValid) {
+        // Filter and validate leads
+        const validationResult = validateAndFilterLeads();
+        if (validationResult.validCount === 0) {
+            showStatus('No valid leads found with required data', 'error');
+            return;
+        }
+
+        // Update the valid leads count
+        validLeadsCount = validationResult.validCount;
+
+        // Show validation summary
+        const summary = `Found ${validationResult.validCount} valid leads out of ${currentCSVData.length} rows`;
+        if (validationResult.skippedCount > 0) {
+            showStatus(summary + ` (${validationResult.skippedCount} will be skipped due to missing data)`, 'warning');
+        } else {
+            showStatus(summary, 'success');
+        }
+
         updateStepStatus(3, 'completed');
         updateStepStatus(4, 'active');
         document.getElementById('pitchCustomization').classList.remove('hidden');
-        showStatus('Column configuration validated successfully', 'success');
     } else {
         showStatus('Please fill in all required fields', 'error');
     }
+}
+
+function validateAndFilterLeads() {
+    const nameColumn = document.getElementById('nameColumn').value;
+    const linkedinColumn = document.getElementById('linkedinColumn').value;
+    const salesNavigatorColumn = document.getElementById('salesNavigatorColumn').value;
+    const enableSalesNavigator = document.getElementById('enableSalesNavigator').checked;
+
+    let validCount = 0;
+    let skippedCount = 0;
+
+    currentCSVData.forEach(row => {
+        const name = (row[nameColumn] || '').trim();
+        let profileUrl = (row[linkedinColumn] || '').trim();
+
+        // Check for Sales Navigator URL if enabled
+        if (enableSalesNavigator && salesNavigatorColumn) {
+            const salesUrl = (row[salesNavigatorColumn] || '').trim();
+            if (salesUrl) {
+                profileUrl = salesUrl; // Prefer Sales Navigator URL
+            }
+        }
+
+        // Validate required fields
+        const hasValidName = name && name.length > 1;
+        const hasValidProfile = profileUrl && (
+            profileUrl.includes('linkedin.com') || 
+            profileUrl.match(/^[a-zA-Z0-9\-]+$/) || // Username format
+            profileUrl.length > 3
+        );
+
+        if (hasValidName && hasValidProfile) {
+            validCount++;
+        } else {
+            skippedCount++;
+        }
+    });
+
+    return { validCount, skippedCount };
 }
 
 // Sales Navigator toggle function
@@ -439,7 +573,6 @@ function toggleSalesNavigator() {
         options.classList.remove('hidden');
     } else {
         options.classList.add('hidden');
-        // Clear the sales navigator column selection
         document.getElementById('salesNavigatorColumn').value = '';
     }
 }
@@ -469,25 +602,57 @@ function validatePitchConfiguration() {
     }
 }
 
-// Processing Control Functions
-function pauseProcessing() {
+// Enhanced pause functionality with state persistence
+async function pauseProcessing() {
     isPaused = true;
     document.getElementById('pauseProcessingBtn').classList.add('hidden');
     document.getElementById('resumeProcessingBtn').classList.remove('hidden');
-    updateProgress(currentProcessingIndex, currentCSVData.length, 'Processing paused...');
-    showStatus('Processing paused. Click Resume to continue.', 'warning');
+
+    // Save current processing state
+    const pausedState = {
+        currentCSVData,
+        csvHeaders,
+        enrichedResults,
+        currentProcessingIndex,
+        validLeadsCount,
+        startTime,
+        config: {
+            nameColumn: document.getElementById('nameColumn').value,
+            linkedinColumn: document.getElementById('linkedinColumn').value,
+            companyColumn: document.getElementById('companyColumn').value,
+            salesNavigatorColumn: document.getElementById('salesNavigatorColumn').value,
+            enableSalesNavigator: document.getElementById('enableSalesNavigator').checked,
+            serviceType: document.getElementById('serviceType').value.trim(),
+            industryFocus: document.getElementById('industryFocus').value.trim(),
+            customPrompt: document.getElementById('customPrompt').value.trim()
+        }
+    };
+
+    await chrome.storage.local.set({ pausedProcessingState: pausedState });
+    updateProgress(currentProcessingIndex, validLeadsCount, 'Processing paused - progress saved');
+    showStatus('Processing paused. Progress saved. Click Resume to continue or download current results.', 'warning');
+
+    // Show download option during pause
+    if (enrichedResults.length > 0) {
+        document.getElementById('completionSection').classList.remove('hidden');
+    }
 }
 
-function resumeProcessing() {
+async function resumeProcessing() {
     isPaused = false;
     document.getElementById('pauseProcessingBtn').classList.remove('hidden');
     document.getElementById('resumeProcessingBtn').classList.add('hidden');
-    showStatus('Processing resumed', 'success');
+    document.getElementById('completionSection').classList.add('hidden');
+    updateProgress(currentProcessingIndex, validLeadsCount, 'Processing resumed...');
+    showStatus('Processing resumed from where it left off', 'success');
 }
 
-function stopProcessing() {
+async function stopProcessing() {
     isStopped = true;
     isProcessing = false;
+    
+    // Clear paused state since we're stopping completely
+    await chrome.storage.local.remove(['pausedProcessingState']);
     
     // Hide processing controls and show completion section
     document.getElementById('activeProcessingControls').classList.add('hidden');
@@ -495,11 +660,63 @@ function stopProcessing() {
     
     // Update status
     updateStepStatus(5, 'completed');
-    updateProgress(currentProcessingIndex, currentCSVData.length, `Processing stopped. ${enrichedResults.length} leads processed.`);
+    updateProgress(currentProcessingIndex, validLeadsCount, `Processing stopped. ${enrichedResults.length} leads processed.`);
     showStatus(`Processing stopped. ${enrichedResults.length} leads have been processed and are ready for download.`, 'warning');
 }
 
-// Lead Processing
+// Restore paused state on page load
+async function restorePausedState(pausedState) {
+    try {
+        currentCSVData = pausedState.currentCSVData;
+        csvHeaders = pausedState.csvHeaders;
+        enrichedResults = pausedState.enrichedResults;
+        currentProcessingIndex = pausedState.currentProcessingIndex;
+        validLeadsCount = pausedState.validLeadsCount;
+        startTime = pausedState.startTime;
+
+        // Restore form values
+        const config = pausedState.config;
+        Object.keys(config).forEach(key => {
+            const element = document.getElementById(key);
+            if (element) {
+                if (element.type === 'checkbox') {
+                    element.checked = config[key];
+                } else {
+                    element.value = config[key];
+                }
+            }
+        });
+
+        // Restore UI state
+        showCSVPreview();
+        populateColumnSelectors();
+        updateStepStatus(1, 'completed');
+        updateStepStatus(2, 'completed');
+        updateStepStatus(3, 'completed');
+        updateStepStatus(4, 'completed');
+        updateStepStatus(5, 'active');
+        
+        document.getElementById('columnMapping').classList.remove('hidden');
+        document.getElementById('pitchCustomization').classList.remove('hidden');
+        document.getElementById('progressSection').classList.remove('hidden');
+        document.getElementById('activeProcessingControls').classList.remove('hidden');
+        document.getElementById('pauseProcessingBtn').classList.add('hidden');
+        document.getElementById('resumeProcessingBtn').classList.remove('hidden');
+        
+        if (enrichedResults.length > 0) {
+            document.getElementById('completionSection').classList.remove('hidden');
+        }
+
+        updateProgress(currentProcessingIndex, validLeadsCount, `Restored paused session - ${enrichedResults.length} leads already processed`);
+        showStatus('Previous paused session restored. Click Resume to continue processing.', 'warning');
+        isPaused = true;
+    } catch (error) {
+        console.error('Error restoring paused state:', error);
+        await chrome.storage.local.remove(['pausedProcessingState']);
+    }
+}
+
+// Enhanced lead processing with better filtering and 404 handling
 async function startProcessing() {
     if (isProcessing) return;
 
@@ -507,11 +724,17 @@ async function startProcessing() {
         isProcessing = true;
         isPaused = false;
         isStopped = false;
-        currentProcessingIndex = 0;
         
+        // Only reset if starting fresh (not resuming)
+        if (currentProcessingIndex === 0) {
+            enrichedResults = [];
+            startTime = Date.now();
+        }
+
         document.getElementById('startProcessingBtn').disabled = true;
         document.getElementById('progressSection').classList.remove('hidden');
         document.getElementById('activeProcessingControls').classList.remove('hidden');
+        document.getElementById('completionSection').classList.add('hidden');
 
         const config = {
             nameColumn: document.getElementById('nameColumn').value,
@@ -524,13 +747,14 @@ async function startProcessing() {
             customPrompt: document.getElementById('customPrompt').value.trim()
         };
 
-        enrichedResults = [];
-        startTime = Date.now();
+        // Filter valid leads before processing
+        const validLeads = filterValidLeads(config);
+        validLeadsCount = validLeads.length;
 
-        document.getElementById('totalCount').textContent = currentCSVData.length;
-        updateProgress(0, currentCSVData.length, 'Starting processing...');
+        document.getElementById('totalCount').textContent = validLeadsCount;
+        updateProgress(currentProcessingIndex, validLeadsCount, 'Starting processing...');
 
-        for (let i = 0; i < currentCSVData.length; i++) {
+        for (let i = currentProcessingIndex; i < validLeads.length; i++) {
             currentProcessingIndex = i;
             
             // Check if processing should stop
@@ -541,52 +765,30 @@ async function startProcessing() {
             
             // Handle pause functionality
             while (isPaused && !isStopped) {
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
             
-            // Check again after pause in case user stopped during pause
             if (isStopped) {
                 console.log('Processing stopped by user during pause');
                 break;
             }
             
-            const lead = currentCSVData[i];
+            const lead = validLeads[i];
             const leadName = lead[config.nameColumn] || `Lead ${i + 1}`;
-            
-            // Determine which profile URL to use
             let profileUrl = lead[config.linkedinColumn];
-            
-            // If Sales Navigator is enabled and we have a Sales Navigator column, prefer that
+
+            // Use Sales Navigator URL if available and enabled
             if (config.enableSalesNavigator && config.salesNavigatorColumn && lead[config.salesNavigatorColumn]) {
                 profileUrl = lead[config.salesNavigatorColumn];
             }
 
-            // Validate profile URL before processing
-            if (!profileUrl || typeof profileUrl !== 'string' || profileUrl.trim() === '') {
-                console.log(`Skipping ${leadName} - no valid LinkedIn profile URL found`);
-                
-                const enrichedLead = {
-                    ...lead,
-                    pitch_1: '',
-                    pitch_2: '',
-                    pitch_3: '',
-                    enrichment_status: 'skipped',
-                    error_message: 'No valid LinkedIn profile URL provided',
-                    skipped_date: new Date().toISOString()
-                };
-                
-                enrichedResults.push(enrichedLead);
-                updateProgress(i + 1, currentCSVData.length, `Skipped ${leadName} - no profile URL`);
-                continue;
-            }
-
-            updateProgress(i + 1, currentCSVData.length, `Processing ${leadName}...`);
+            updateProgress(i + 1, validLeadsCount, `Processing ${leadName}...`);
 
             try {
                 // Add delay between requests (except first)
                 if (i > 0) {
                     const delay = await getProcessingDelay();
-                    updateProgress(i + 1, currentCSVData.length, `Waiting ${Math.round(delay / 1000)} seconds before processing ${leadName}...`);
+                    updateProgress(i + 1, validLeadsCount, `Waiting ${Math.round(delay / 1000)} seconds before processing ${leadName}...`);
                     
                     // Handle pause during delay
                     for (let delayCount = 0; delayCount < delay / 1000; delayCount++) {
@@ -597,13 +799,30 @@ async function startProcessing() {
                     if (isStopped) break;
                 }
 
-                // Scrape profile with timeout handling
-                updateProgress(i + 1, currentCSVData.length, `Scraping profile for ${leadName}...`);
-                const profileData = await scrapeProfileWithTimeout(profileUrl, leadName);
+                // Scrape profile with enhanced 404 handling
+                updateProgress(i + 1, validLeadsCount, `Scraping profile for ${leadName}...`);
+                const profileResult = await scrapeProfileWithEnhanced404Handling(profileUrl, leadName);
+
+                if (profileResult.is404 || profileResult.isError) {
+                    // Handle 404 or error pages
+                    const enrichedLead = {
+                        ...lead,
+                        pitch_1: '',
+                        pitch_2: '',
+                        pitch_3: '',
+                        enrichment_status: profileResult.is404 ? '404_not_found' : 'error',
+                        error_message: profileResult.message,
+                        failed_date: new Date().toISOString()
+                    };
+
+                    enrichedResults.push(enrichedLead);
+                    console.log(`Skipped ${leadName} - ${profileResult.message}`);
+                    continue;
+                }
 
                 // Generate AI pitches
-                updateProgress(i + 1, currentCSVData.length, `Generating AI pitches for ${leadName}...`);
-                const pitches = await generatePitches(leadName, profileData, config.serviceType, config.industryFocus, config.customPrompt);
+                updateProgress(i + 1, validLeadsCount, `Generating AI pitches for ${leadName}...`);
+                const pitches = await generatePitches(leadName, profileResult.data, config.serviceType, config.industryFocus, config.customPrompt);
 
                 // Store results
                 const enrichedLead = {
@@ -613,7 +832,7 @@ async function startProcessing() {
                     pitch_3: pitches[2] || '',
                     enrichment_status: 'completed',
                     enriched_date: new Date().toISOString(),
-                    profile_data_length: profileData.length
+                    profile_data_length: profileResult.data.length
                 };
 
                 enrichedResults.push(enrichedLead);
@@ -636,6 +855,9 @@ async function startProcessing() {
             }
         }
 
+        // Clear paused state on completion
+        await chrome.storage.local.remove(['pausedProcessingState']);
+
         // Processing complete (only if not stopped by user)
         if (!isStopped) {
             updateStepStatus(5, 'completed');
@@ -652,58 +874,139 @@ async function startProcessing() {
     }
 }
 
-async function scrapeProfile(profileUrl) {
-    return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-            type: 'SCRAPE_PROFILE',
-            profileUrl: profileUrl
-        }, (response) => {
-            if (response.success) {
-                resolve(response.data);
-            } else if (response.is404) {
-                // Handle 404 pages specifically
-                reject(new Error(`Profile not found (404): ${response.message}`));
-            } else {
-                reject(new Error(response.message));
+// Enhanced lead filtering to skip invalid entries
+function filterValidLeads(config) {
+    const validLeads = [];
+    
+    currentCSVData.forEach((lead, index) => {
+        const name = (lead[config.nameColumn] || '').trim();
+        let profileUrl = (lead[config.linkedinColumn] || '').trim();
+
+        // Check for Sales Navigator URL if enabled
+        if (config.enableSalesNavigator && config.salesNavigatorColumn) {
+            const salesUrl = (lead[config.salesNavigatorColumn] || '').trim();
+            if (salesUrl) {
+                profileUrl = salesUrl; // Prefer Sales Navigator URL
             }
-        });
+        }
+
+        // Strict validation for required fields
+        const hasValidName = name && name.length > 1 && name !== 'null' && name !== 'undefined';
+        const hasValidProfile = profileUrl && 
+            profileUrl.length > 3 && 
+            profileUrl !== 'null' && 
+            profileUrl !== 'undefined' && 
+            (profileUrl.includes('linkedin.com') || 
+             profileUrl.match(/^[a-zA-Z0-9\-._]+$/) // Username format with dots and underscores
+            );
+
+        if (hasValidName && hasValidProfile) {
+            validLeads.push({
+                ...lead,
+                _originalIndex: index, // Track original position
+                _processedProfileUrl: profileUrl // Store the URL we'll actually use
+            });
+        } else {
+            console.log(`Skipping lead at row ${index + 2}: name="${name}", profile="${profileUrl}" - missing required data`);
+        }
     });
+
+    console.log(`Filtered ${validLeads.length} valid leads from ${currentCSVData.length} total rows`);
+    return validLeads;
 }
 
-// Enhanced scrape profile with timeout handling and 404 detection
-async function scrapeProfileWithTimeout(profileUrl, leadName) {
+// Enhanced profile scraping with better 404 detection and timeout handling
+async function scrapeProfileWithEnhanced404Handling(profileUrl, leadName) {
     try {
         // Get timeout setting
         const settings = await chrome.storage.local.get(['pageTimeout']);
         const timeoutSeconds = parseInt(settings.pageTimeout) || 10;
         const timeoutMs = timeoutSeconds * 1000;
-        
+
         // Create a timeout promise
         const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => {
-                reject(new Error(`Timeout: Profile page took longer than ${timeoutSeconds} seconds to load (likely 404 or error page)`));
+                reject(new Error(`TIMEOUT_404: Profile page took longer than ${timeoutSeconds} seconds - likely 404 or blocked`));
             }, timeoutMs);
         });
-        
+
+        // Enhanced scraping promise
+        const scrapePromise = new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({
+                type: 'SCRAPE_PROFILE',
+                profileUrl: profileUrl
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(`Extension error: ${chrome.runtime.lastError.message}`));
+                    return;
+                }
+
+                if (!response) {
+                    reject(new Error('No response from background script'));
+                    return;
+                }
+
+                if (response.is404) {
+                    resolve({
+                        is404: true,
+                        message: `Profile not found (404) - ${response.message}`,
+                        data: ''
+                    });
+                } else if (response.success) {
+                    // Validate that we got meaningful data
+                    const dataLength = response.data ? response.data.length : 0;
+                    if (dataLength < 50) {
+                        resolve({
+                            is404: true,
+                            message: `Profile data too short (${dataLength} chars) - likely 404 or private profile`,
+                            data: response.data || ''
+                        });
+                    } else {
+                        resolve({
+                            is404: false,
+                            isError: false,
+                            data: response.data,
+                            message: 'Profile scraped successfully'
+                        });
+                    }
+                } else {
+                    // Check if error message indicates 404
+                    const errorMessage = response.message || 'Unknown error';
+                    const is404Error = errorMessage.toLowerCase().includes('404') || 
+                                      errorMessage.toLowerCase().includes('not found') ||
+                                      errorMessage.toLowerCase().includes('page not found') ||
+                                      errorMessage.toLowerCase().includes('profile unavailable');
+
+                    resolve({
+                        is404: is404Error,
+                        isError: !is404Error,
+                        message: errorMessage,
+                        data: ''
+                    });
+                }
+            });
+        });
+
         // Race between scraping and timeout
-        const scrapePromise = scrapeProfile(profileUrl);
-        
         const result = await Promise.race([scrapePromise, timeoutPromise]);
-        
-        // If we get here, scraping succeeded within timeout
         return result;
-        
+
     } catch (error) {
         // Handle different types of errors
-        if (error.message.includes('Timeout:')) {
-            console.log(`Skipping ${leadName} due to timeout (likely 404 or error page)`);
-            return `Profile timeout for ${leadName}. URL: ${profileUrl}. This may be a 404 or error page.`;
-        } else if (error.message.includes('Profile not found') || error.message.includes('404')) {
-            console.log(`Skipping ${leadName} - 404 page detected`);
-            return `Profile not found for ${leadName}. URL: ${profileUrl}. 404 or error page detected.`;
+        if (error.message.includes('TIMEOUT_404')) {
+            console.log(`Timeout detected for ${leadName} - treating as 404`);
+            return {
+                is404: true,
+                message: `Timeout after ${error.message.split(' ')[6]} seconds - likely 404 or blocked profile`,
+                data: ''
+            };
         } else {
-            // Re-throw other errors
-            throw error;
+            console.error(`Error scraping ${leadName}:`, error);
+            return {
+                isError: true,
+                message: `Scraping error: ${error.message}`,
+                data: ''
+            };
         }
     }
 }
@@ -718,10 +1021,15 @@ async function generatePitches(personName, profileData, serviceType, industryFoc
             industryFocus: industryFocus,
             customPrompt: customPrompt
         }, (response) => {
-            if (response.success) {
-                resolve(response.pitches);
+            if (chrome.runtime.lastError) {
+                reject(new Error(`Extension error: ${chrome.runtime.lastError.message}`));
+                return;
+            }
+
+            if (response && response.success) {
+                resolve(response.pitches || ['', '', '']);
             } else {
-                reject(new Error(response.message));
+                reject(new Error(response ? response.message : 'No response from AI service'));
             }
         });
     });
@@ -754,7 +1062,7 @@ function downloadResults() {
     }
 
     const csvContent = convertToCSV(enrichedResults);
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
@@ -763,26 +1071,43 @@ function downloadResults() {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    showStatus('Results downloaded successfully!', 'success');
+    showStatus(`Results downloaded successfully! ${enrichedResults.length} leads exported.`, 'success');
 }
 
 function convertToCSV(data) {
     if (!data || data.length === 0) return '';
 
-    const headers = Object.keys(data[0]);
+    // Get all unique headers from all rows (in case some rows have different fields)
+    const allHeaders = new Set();
+    data.forEach(row => {
+        Object.keys(row).forEach(key => {
+            if (!key.startsWith('_')) { // Skip internal fields like _originalIndex
+                allHeaders.add(key);
+            }
+        });
+    });
+
+    const headers = Array.from(allHeaders);
     const csvRows = [headers.join(',')];
 
     data.forEach(row => {
         const values = headers.map(header => {
-            const value = row[header] || '';
+            let value = row[header];
+            if (value === null || value === undefined) {
+                value = '';
+            } else {
+                value = String(value);
+            }
+
             // Escape quotes and wrap in quotes if contains comma/quote/newline
-            if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-                return '"' + value.replace(/"/g, '""') + '"';
+            if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
+                value = '"' + value.replace(/"/g, '""') + '"';
             }
             return value;
         });
@@ -802,36 +1127,75 @@ function showResults() {
         return;
     }
 
-    // Create results table
-    let html = '<div style="max-height: 400px; overflow: auto;"><table class="results-table"><thead><tr>';
+    // Create summary statistics
+    const completedCount = enrichedResults.filter(r => r.enrichment_status === 'completed').length;
+    const failedCount = enrichedResults.filter(r => r.enrichment_status === 'failed').length;
+    const notFoundCount = enrichedResults.filter(r => r.enrichment_status === '404_not_found').length;
+    const skippedCount = enrichedResults.filter(r => r.enrichment_status === 'skipped').length;
 
-    const headers = Object.keys(enrichedResults[0]);
+    let summaryHtml = `<div style="margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px;">
+        <h4>Processing Summary</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; margin-top: 0.5rem;">
+            <div style="text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: #10b981;">${completedCount}</div>
+                <div style="font-size: 0.8rem; color: #6b7280;">Completed</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: #f59e0b;">${notFoundCount}</div>
+                <div style="font-size: 0.8rem; color: #6b7280;">404/Not Found</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: #ef4444;">${failedCount}</div>
+                <div style="font-size: 0.8rem; color: #6b7280;">Failed</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: #6b7280;">${skippedCount}</div>
+                <div style="font-size: 0.8rem; color: #6b7280;">Skipped</div>
+            </div>
+        </div>
+    </div>`;
+
+    // Create results table (show first 10 rows)
+    let tableHtml = '<div style="max-height: 400px; overflow: auto;"><table class="results-table"><thead><tr>';
+
+    const headers = Object.keys(enrichedResults[0]).filter(key => !key.startsWith('_'));
     headers.forEach(header => {
-        html += `<th>${header}</th>`;
+        tableHtml += `<th>${header}</th>`;
     });
-    html += '</tr></thead><tbody>';
+    tableHtml += '</tr></thead><tbody>';
 
-    enrichedResults.forEach(row => {
-        html += '<tr>';
+    enrichedResults.slice(0, 10).forEach(row => {
+        tableHtml += '<tr>';
         headers.forEach(header => {
             let value = row[header] || '';
             if (header.startsWith('pitch_') && value) {
                 value = `<div class="pitch-cell">${value}</div>`;
+            } else if (header === 'enrichment_status') {
+                const statusClass = value === 'completed' ? 'status-success' : 
+                                   value === '404_not_found' ? 'status-warning' : 'status-error';
+                value = `<span class="${statusClass}" style="padding: 2px 6px; border-radius: 3px; font-size: 0.7rem;">${value}</span>`;
             }
-            html += `<td>${value}</td>`;
+            tableHtml += `<td>${value}</td>`;
         });
-        html += '</tr>';
+        tableHtml += '</tr>';
     });
 
-    html += '</tbody></table></div>';
-    resultsContainer.innerHTML = html;
+    tableHtml += '</tbody></table>';
+    if (enrichedResults.length > 10) {
+        tableHtml += `<p style="text-align: center; margin-top: 1rem; color: #6b7280; font-size: 0.9rem;">Showing first 10 of ${enrichedResults.length} results. Download CSV for complete data.</p>`;
+    }
+    tableHtml += '</div>';
+
+    resultsContainer.innerHTML = summaryHtml + tableHtml;
     resultsSection.classList.remove('hidden');
 }
 
 // Utility Functions
 function updateStepStatus(stepNumber, status) {
     const step = document.getElementById(`step${stepNumber}`);
-    step.className = `step ${status}`;
+    if (step) {
+        step.className = `step ${status}`;
+    }
 }
 
 async function getProcessingDelay() {
@@ -872,6 +1236,7 @@ function showStatus(message, type) {
             font-weight: 500;
             z-index: 1000;
             max-width: 300px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         `;
         document.body.appendChild(statusEl);
     }
@@ -879,12 +1244,11 @@ function showStatus(message, type) {
     statusEl.textContent = message;
     statusEl.className = `status-indicator status-${type}`;
 
-    // Auto-hide after 3 seconds for success messages
-    if (type === 'success') {
-        setTimeout(() => {
-            if (statusEl.parentNode) {
-                statusEl.parentNode.removeChild(statusEl);
-            }
-        }, 3000);
-    }
+    // Auto-hide after 5 seconds for success messages, 3 seconds for others
+    const hideDelay = type === 'success' ? 5000 : 3000;
+    setTimeout(() => {
+        if (statusEl && statusEl.parentNode) {
+            statusEl.parentNode.removeChild(statusEl);
+        }
+    }, hideDelay);
 }

@@ -384,29 +384,59 @@ async function handleProfileScraping(message, sender, sendResponse) {
         };
 
         return scrollAndWait().then(() => {
-          // First check for 404 or error pages
+          // Enhanced 404 and error page detection
           const pageTitle = document.title.toLowerCase();
           const bodyText = document.body.innerText.toLowerCase();
-          
-          // Check for 404 indicators
-          const is404Page = 
-            pageTitle.includes('page not found') ||
-            pageTitle.includes('404') ||
-            pageTitle.includes('not found') ||
-            bodyText.includes('page not found') ||
-            bodyText.includes('this page doesn\'t exist') ||
-            bodyText.includes('profile not found') ||
-            bodyText.includes('user not found') ||
-            document.querySelector('.error-404') ||
-            document.querySelector('[data-test="error-404"]') ||
-            document.querySelector('.not-found');
-          
+          const url = window.location.href.toLowerCase();
+
+          // Enhanced 404 detection patterns
+          const is404Patterns = [
+            // Title patterns
+            pageTitle.includes('page not found'),
+            pageTitle.includes('404'),
+            pageTitle.includes('not found'),
+            pageTitle.includes('profile not found'),
+            pageTitle.includes('user not found'),
+            pageTitle.includes('member not found'),
+            
+            // Body text patterns
+            bodyText.includes('page not found'),
+            bodyText.includes('this page doesn\'t exist'),
+            bodyText.includes('profile not found'),
+            bodyText.includes('user not found'),
+            bodyText.includes('this linkedin member doesn\'t exist'),
+            bodyText.includes('profile unavailable'),
+            bodyText.includes('member profile not found'),
+            bodyText.includes('this profile is not available'),
+            bodyText.includes('the profile you requested does not exist'),
+            
+            // Element-based detection
+            document.querySelector('.error-404') !== null,
+            document.querySelector('[data-test="error-404"]') !== null,
+            document.querySelector('.not-found') !== null,
+            document.querySelector('.profile-unavailable') !== null,
+            document.querySelector('.member-not-found') !== null,
+            
+            // URL-based detection
+            url.includes('/404'),
+            url.includes('/error'),
+            url.includes('/not-found')
+          ];
+
           // Check for LinkedIn-specific error indicators
-          const isLinkedInError = 
-            bodyText.includes('this linkedin member doesn\'t exist') ||
-            bodyText.includes('profile unavailable') ||
-            bodyText.includes('member profile not found') ||
-            document.querySelector('.profile-unavailable');
+          const linkedInErrorPatterns = [
+            bodyText.includes('something went wrong'),
+            bodyText.includes('try again later'),
+            bodyText.includes('temporarily unavailable'),
+            bodyText.includes('blocked or restricted'),
+            bodyText.includes('private profile'),
+            bodyText.includes('premium feature'),
+            document.querySelector('.premium-upsell') !== null,
+            document.querySelector('.blocked-profile') !== null
+          ];
+
+          const is404Page = is404Patterns.some(pattern => pattern);
+          const isLinkedInError = linkedInErrorPatterns.some(pattern => pattern);
           
           if (is404Page || isLinkedInError) {
             return {
@@ -415,7 +445,7 @@ async function handleProfileScraping(message, sender, sendResponse) {
               data: '',
               url: window.location.href,
               method: '404_detected',
-              message: 'Profile not found (404 or error page detected)'
+              message: is404Page ? 'Profile not found (404 page detected)' : 'LinkedIn error or restricted profile detected'
             };
           }
           
