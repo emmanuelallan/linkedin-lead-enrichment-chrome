@@ -1027,9 +1027,9 @@ function validateAndCleanProfileUrl(input) {
     };
   }
 
-  // If it's a standard LinkedIn profile URL
+  // If it's a standard LinkedIn profile URL (including www. prefix)
   if (trimmed.includes('linkedin.com/in/')) {
-    const match = trimmed.match(/linkedin\.com\/in\/([^\/?\s&]+)/);
+    const match = trimmed.match(/(?:www\.)?linkedin\.com\/in\/([^\/?\s&]+)/);
     if (match) {
       return {
         isValid: true,

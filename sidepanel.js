@@ -317,6 +317,7 @@ function parseCSV(text, filename) {
     }
 
     console.log(`Parsed ${currentCSVData.length} valid rows (skipped ${skippedEmptyRows} empty rows) with headers:`, csvHeaders);
+    console.log('Sample data from first row:', currentCSVData[0]);
     showCSVPreview();
     populateColumnSelectors();
 }
@@ -374,16 +375,16 @@ function populateColumnSelectors() {
 function autoSuggestColumnEnhanced(select, selectorId) {
     const suggestions = {
         nameColumn: [
-            'fullname', 'full_name', 'name', 'firstname', 'first_name',
-            'contact_name', 'lead_name', 'person_name', 'client_name'
+            'full name', 'fullname', 'full_name', 'name', 'firstname', 'first_name', 'first name',
+            'contact_name', 'lead_name', 'person_name', 'client_name', 'contact name'
         ],
         linkedinColumn: [
-            'linkedin', 'profile', 'linkedin_url', 'linkedin_profile',
-            'profile_url', 'linkedinprofileurl', 'profileurl', 'li_url'
+            'linkedin', 'profile', 'linkedin_url', 'linkedin_profile', 'linkedin url',
+            'profile_url', 'linkedinprofileurl', 'profileurl', 'li_url', 'profile url'
         ],
         companyColumn: [
-            'company', 'organization', 'company_name', 'companyname',
-            'org', 'employer', 'business', 'firm'
+            'company name', 'company', 'organization', 'company_name', 'companyname',
+            'org', 'employer', 'business', 'firm', 'company legal name'
         ],
         salesNavigatorColumn: [
             'sales_navigator', 'salesnavigator', 'sales_nav', 'salesnav',
@@ -436,12 +437,15 @@ function analyzeColumnContent(header, sampleRows, selectorId) {
 
         switch (selectorId) {
             case 'linkedinColumn':
+                // Enhanced LinkedIn URL detection
                 if (value.includes('linkedin.com/in/') || value.includes('linkedin.com/pub/')) {
                     score += 200; // Strong indicator
-                } else if (value.includes('linkedin') && value.includes('/')) {
-                    score += 100; // Moderate indicator
-                } else if (value.match(/^[a-zA-Z0-9\-]+$/) && value.length > 3 && value.length < 50) {
-                    score += 50; // Possible username
+                } else if (value.includes('www.linkedin.com/in/') || value.includes('linkedin.com/in/')) {
+                    score += 200; // Strong indicator with www
+                } else if (value.includes('linkedin') && (value.includes('/') || value.includes('.'))) {
+                    score += 150; // Moderate indicator
+                } else if (value.match(/^[a-zA-Z0-9\-_]+$/) && value.length > 3 && value.length < 100) {
+                    score += 50; // Possible username or LinkedIn ID
                 }
                 break;
                 
@@ -454,27 +458,59 @@ function analyzeColumnContent(header, sampleRows, selectorId) {
                 break;
                 
             case 'nameColumn':
-                // Check for name patterns
+                // Enhanced name detection
                 const words = value.split(' ').filter(w => w.length > 0);
-                if (words.length >= 2 && words.length <= 4) {
-                    const hasCapitals = words.every(word => /^[A-Z]/.test(word));
-                    if (hasCapitals) score += 100; // Likely a name
-                    else score += 50; // Possible name
+                if (words.length >= 2 && words.length <= 5) {
+                    // Check if it looks like a person's name
+                    const hasProperCase = words.some(word => /^[A-Z][a-z]/.test(word));
+                    const noNumbers = !value.match(/\d/);
+                    const noSpecialChars = !value.match(/[@#$%^&*()_+=\[\]{}|\\:";'<>?,./]/);
+                    
+                    if (hasProperCase && noNumbers && noSpecialChars) {
+                        score += 150; // Very likely a name
+                    } else if (noNumbers && noSpecialChars) {
+                        score += 100; // Likely a name
+                    } else {
+                        score += 50; // Possible name
+                    }
+                } else if (words.length === 1 && value.length > 2 && value.length < 30) {
+                    // Single word name (first name or last name)
+                    const hasProperCase = /^[A-Z][a-z]/.test(value);
+                    const noNumbers = !value.match(/\d/);
+                    if (hasProperCase && noNumbers) {
+                        score += 80; // Likely a single name
+                    }
                 }
-                // Avoid columns that look like emails or URLs
-                if (value.includes('@') || value.includes('http')) {
-                    score -= 100;
+                
+                // Avoid columns that look like emails, URLs, or IDs
+                if (value.includes('@') || value.includes('http') || value.includes('www.') || 
+                    value.match(/^\d+$/) || value.includes('id:')) {
+                    score -= 150;
                 }
                 break;
                 
             case 'companyColumn':
-                // Check for company patterns
-                if (value.includes('inc') || value.includes('ltd') || value.includes('corp') || 
-                    value.includes('llc') || value.includes('company') || value.includes('co.')) {
-                    score += 100; // Strong company indicator
+                // Enhanced company detection
+                const companyIndicators = ['inc', 'ltd', 'corp', 'llc', 'company', 'co.', 'gmbh', 
+                                         'sa', 'sas', 'sarl', 'ag', 'plc', 'pty', 'bv', 'nv'];
+                const hasCompanyIndicator = companyIndicators.some(indicator => 
+                    value.includes(` ${indicator}`) || value.endsWith(indicator)
+                );
+                
+                if (hasCompanyIndicator) {
+                    score += 150; // Strong company indicator
                 } else if (value.length > 2 && value.length < 100 && 
-                          !value.includes('@') && !value.includes('http')) {
-                    score += 30; // Possible company name
+                          !value.includes('@') && !value.includes('http') && 
+                          !value.match(/^\d+$/) && // Not just numbers
+                          value.split(' ').length <= 6) { // Reasonable company name length
+                    score += 80; // Possible company name
+                }
+                
+                // Boost score for common company patterns
+                if (value.includes('technologies') || value.includes('solutions') || 
+                    value.includes('systems') || value.includes('services') || 
+                    value.includes('group') || value.includes('international')) {
+                    score += 50;
                 }
                 break;
         }
@@ -549,9 +585,12 @@ function validateAndFilterLeads() {
         // Validate required fields
         const hasValidName = name && name.length > 1;
         const hasValidProfile = profileUrl && (
-            profileUrl.includes('linkedin.com') || 
-            profileUrl.match(/^[a-zA-Z0-9\-]+$/) || // Username format
-            profileUrl.length > 3
+            profileUrl.includes('linkedin.com/in/') || 
+            profileUrl.includes('linkedin.com/pub/') ||
+            profileUrl.includes('www.linkedin.com/in/') ||
+            profileUrl.includes('sales.linkedin.com') ||
+            profileUrl.match(/^[a-zA-Z0-9\-_]+$/) || // Username format
+            (profileUrl.length > 10 && profileUrl.includes('linkedin'))
         );
 
         if (hasValidName && hasValidProfile) {
@@ -893,11 +932,15 @@ function filterValidLeads(config) {
         // Strict validation for required fields
         const hasValidName = name && name.length > 1 && name !== 'null' && name !== 'undefined';
         const hasValidProfile = profileUrl && 
-            profileUrl.length > 3 && 
+            profileUrl.length > 10 && 
             profileUrl !== 'null' && 
             profileUrl !== 'undefined' && 
-            (profileUrl.includes('linkedin.com') || 
-             profileUrl.match(/^[a-zA-Z0-9\-._]+$/) // Username format with dots and underscores
+            (profileUrl.includes('linkedin.com/in/') || 
+             profileUrl.includes('linkedin.com/pub/') ||
+             profileUrl.includes('www.linkedin.com/in/') ||
+             profileUrl.includes('sales.linkedin.com') ||
+             profileUrl.includes('linkedin.com/sales/') ||
+             (profileUrl.includes('linkedin') && profileUrl.includes('/'))
             );
 
         if (hasValidName && hasValidProfile) {
