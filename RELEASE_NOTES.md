@@ -1,5 +1,21 @@
 # LinkedIn Lead Enrichment Chrome Extension
 
+## 🚀 v1.2.4 - Fixed False 404 Detection Issue
+
+### 🔧 Major Bug Fix
+- **Fixed False 404s**: Resolved issue where valid LinkedIn profiles were incorrectly marked as "404_not_found"
+- **Improved Detection**: More precise 404 detection that only triggers on actual error pages
+- **Better Timeouts**: Increased default timeout from 10 to 20 seconds with more options (15, 20, 30 seconds)
+- **Enhanced Debugging**: Added debug information to help troubleshoot profile processing issues
+
+### 🎯 What This Fixes
+- **"404_not_found Timeout after 10 seconds"** errors on valid profiles
+- **False positives** from LinkedIn pages containing error-like text
+- **Premature timeouts** on slow-loading but valid profiles
+- **Better error classification** between 404, blocked, and other errors
+
+---
+
 ## 🚀 v1.1.0 - Custom Prompt Templates and Processing Speed Controls
 
 ### ✨ New Features

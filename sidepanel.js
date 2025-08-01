@@ -897,20 +897,28 @@ async function startProcessing() {
                 updateProgress(i + 1, validLeadsCount, `Scraping profile for ${leadName}...`);
                 const profileResult = await scrapeProfileWithEnhanced404Handling(profileUrl, leadName);
 
-                if (profileResult.is404 || profileResult.isError) {
-                    // Handle 404 or error pages
+                if (profileResult.is404 || profileResult.isBlocked || profileResult.isError) {
+                    // Handle 404, blocked, or error pages
+                    let status = 'error';
+                    if (profileResult.is404) {
+                        status = '404_not_found';
+                    } else if (profileResult.isBlocked) {
+                        status = 'access_blocked';
+                    }
+
                     const enrichedLead = {
                         ...lead,
                         pitch_1: '',
                         pitch_2: '',
                         pitch_3: '',
-                        enrichment_status: profileResult.is404 ? '404_not_found' : 'error',
+                        enrichment_status: status,
                         error_message: profileResult.message,
-                        failed_date: new Date().toISOString()
+                        failed_date: new Date().toISOString(),
+                        debug_info: profileResult.debugInfo ? JSON.stringify(profileResult.debugInfo) : ''
                     };
 
                     enrichedResults.push(enrichedLead);
-                    console.log(`Skipped ${leadName} - ${profileResult.message}`);
+                    console.log(`Skipped ${leadName} - ${profileResult.message}`, profileResult.debugInfo);
                     continue;
                 }
 
@@ -1018,7 +1026,7 @@ async function scrapeProfileWithEnhanced404Handling(profileUrl, leadName) {
     try {
         // Get timeout setting
         const settings = await chrome.storage.local.get(['pageTimeout']);
-        const timeoutSeconds = parseInt(settings.pageTimeout) || 10;
+        const timeoutSeconds = parseInt(settings.pageTimeout) || 20;
         const timeoutMs = timeoutSeconds * 1000;
 
         // Create a timeout promise
@@ -1048,7 +1056,22 @@ async function scrapeProfileWithEnhanced404Handling(profileUrl, leadName) {
                     resolve({
                         is404: true,
                         message: `Profile not found (404) - ${response.message}`,
-                        data: ''
+                        data: '',
+                        debugInfo: {
+                            url: response.url,
+                            method: response.method
+                        }
+                    });
+                } else if (response.isBlocked) {
+                    resolve({
+                        is404: false,
+                        isBlocked: true,
+                        message: `Profile access blocked - ${response.message}`,
+                        data: '',
+                        debugInfo: {
+                            url: response.url,
+                            method: response.method
+                        }
                     });
                 } else if (response.success) {
                     // Validate that we got meaningful data

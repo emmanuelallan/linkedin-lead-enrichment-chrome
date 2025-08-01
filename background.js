@@ -384,69 +384,97 @@ async function handleProfileScraping(message, sender, sendResponse) {
         };
 
         return scrollAndWait().then(() => {
-          // Enhanced 404 and error page detection
+          // More precise 404 and error page detection with debugging
           const pageTitle = document.title.toLowerCase();
           const bodyText = document.body.innerText.toLowerCase();
           const url = window.location.href.toLowerCase();
 
-          // Enhanced 404 detection patterns
-          const is404Patterns = [
-            // Title patterns
-            pageTitle.includes('page not found'),
-            pageTitle.includes('404'),
-            pageTitle.includes('not found'),
-            pageTitle.includes('profile not found'),
-            pageTitle.includes('user not found'),
-            pageTitle.includes('member not found'),
-            
-            // Body text patterns
-            bodyText.includes('page not found'),
-            bodyText.includes('this page doesn\'t exist'),
-            bodyText.includes('profile not found'),
-            bodyText.includes('user not found'),
-            bodyText.includes('this linkedin member doesn\'t exist'),
-            bodyText.includes('profile unavailable'),
-            bodyText.includes('member profile not found'),
-            bodyText.includes('this profile is not available'),
-            bodyText.includes('the profile you requested does not exist'),
-            
-            // Element-based detection
-            document.querySelector('.error-404') !== null,
-            document.querySelector('[data-test="error-404"]') !== null,
-            document.querySelector('.not-found') !== null,
-            document.querySelector('.profile-unavailable') !== null,
-            document.querySelector('.member-not-found') !== null,
-            
-            // URL-based detection
-            url.includes('/404'),
-            url.includes('/error'),
-            url.includes('/not-found')
-          ];
+          // Debug information
+          const debugInfo = {
+            pageTitle: document.title,
+            url: window.location.href,
+            bodyTextLength: document.body.innerText.length,
+            hasMainElement: !!document.querySelector('main'),
+            hasProfileCard: !!document.querySelector('.pv-top-card'),
+            hasLinkedInNav: !!document.querySelector('.global-nav'),
+            timestamp: new Date().toISOString()
+          };
 
-          // Check for LinkedIn-specific error indicators
-          const linkedInErrorPatterns = [
-            bodyText.includes('something went wrong'),
-            bodyText.includes('try again later'),
-            bodyText.includes('temporarily unavailable'),
-            bodyText.includes('blocked or restricted'),
-            bodyText.includes('private profile'),
-            bodyText.includes('premium feature'),
-            document.querySelector('.premium-upsell') !== null,
-            document.querySelector('.blocked-profile') !== null
-          ];
+          // Check if we're actually on a valid LinkedIn profile page first
+          const isValidLinkedInProfile = 
+            url.includes('linkedin.com/in/') || 
+            url.includes('sales.linkedin.com/') ||
+            url.includes('linkedin.com/sales/');
 
-          const is404Page = is404Patterns.some(pattern => pattern);
-          const isLinkedInError = linkedInErrorPatterns.some(pattern => pattern);
-          
-          if (is404Page || isLinkedInError) {
-            return {
-              success: false,
-              is404: true,
-              data: '',
-              url: window.location.href,
-              method: '404_detected',
-              message: is404Page ? 'Profile not found (404 page detected)' : 'LinkedIn error or restricted profile detected'
-            };
+          // Only check for 404 if we're supposed to be on a LinkedIn profile
+          if (isValidLinkedInProfile) {
+            // Very specific 404 detection patterns - only clear error indicators
+            const is404Patterns = [
+              // Definitive title patterns
+              pageTitle === 'page not found | linkedin',
+              pageTitle === '404 | linkedin',
+              pageTitle.includes('404') && pageTitle.includes('linkedin'),
+              pageTitle === 'profile not found',
+              
+              // Definitive body text patterns (must be exact matches to avoid false positives)
+              bodyText.includes('this page doesn\'t exist') && bodyText.includes('linkedin'),
+              bodyText.includes('this linkedin member doesn\'t exist'),
+              bodyText.includes('the profile you requested does not exist'),
+              bodyText.includes('this profile is not available') && bodyText.includes('linkedin'),
+              
+              // Definitive element-based detection
+              document.querySelector('.error-404') !== null,
+              document.querySelector('[data-test="error-404"]') !== null,
+              document.querySelector('.not-found-page') !== null,
+              
+              // URL-based detection (very specific)
+              url.includes('/404') || url.includes('/error') || url.includes('/not-found')
+            ];
+
+            // Check for LinkedIn-specific blocking (not 404, but access denied)
+            const linkedInBlockedPatterns = [
+              // Only check for blocking if there's no profile content visible
+              (bodyText.includes('sign in to access') || bodyText.includes('join linkedin to view')) && 
+              !document.querySelector('.pv-top-card') && !document.querySelector('main'),
+              
+              // Premium wall (not a 404, but access restricted)
+              document.querySelector('.premium-upsell') !== null && 
+              !document.querySelector('.pv-top-card'),
+              
+              // Explicit blocking message
+              bodyText.includes('this profile is private') && 
+              !document.querySelector('.pv-top-card')
+            ];
+
+            const is404Page = is404Patterns.some(pattern => pattern);
+            const isBlocked = linkedInBlockedPatterns.some(pattern => pattern);
+            
+            // Only return 404 if we have strong evidence
+            if (is404Page) {
+              return {
+                success: false,
+                is404: true,
+                data: '',
+                url: window.location.href,
+                method: '404_detected',
+                message: 'Profile not found (404 page detected)',
+                debugInfo: debugInfo
+              };
+            }
+            
+            // Handle blocked/private profiles differently (not 404)
+            if (isBlocked) {
+              return {
+                success: false,
+                is404: false,
+                isBlocked: true,
+                data: '',
+                url: window.location.href,
+                method: 'access_blocked',
+                message: 'Profile access blocked or requires login',
+                debugInfo: debugInfo
+              };
+            }
           }
           
           // Get main content using the <main> tag approach
